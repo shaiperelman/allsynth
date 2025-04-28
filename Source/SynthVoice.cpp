@@ -345,13 +345,15 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
             if (analogEnvParam && *analogEnvParam > 0.5f)
                 env = std::sqrt(env);   // RC-style analog curve
 
-            // -------- LFO → AMP  --------------------------------------
+            // -------- LFO → AMP (click-safe) --------------------------------
             if (lfoOnParam && *lfoOnParam > 0.5f &&
                 lfoToAmpParam && *lfoToAmpParam > 0.5f)
             {
-                const float depthAmp = (*lfoDepthParam);          // 0…1
-                env *= juce::jlimit(0.0f, 2.0f,
-                                   1.0f + depthAmp * lastLfoValue);
+                const float depthValue = lfoDepthParam ? lfoDepthParam->load() : 0.0f;
+                const float depth = juce::jlimit(0.0f, 0.9f, depthValue); // 0-0.9
+                // map lfoRaw (-1…+1)  ⇒ gain  (1-depth … 1+depth)
+                const float ampMod = 1.0f + depth * lastLfoValue;
+                env *= ampMod;                      // no hard-zero → no click
             }
 
             float currentSample = filtered * env;
@@ -372,13 +374,15 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
             if (analogEnvParam && *analogEnvParam > 0.5f)
                 env = std::sqrt(env);   // RC-style analog curve
 
-            // -------- LFO → AMP  --------------------------------------
+            // -------- LFO → AMP (click-safe) --------------------------------
             if (lfoOnParam && *lfoOnParam > 0.5f &&
                 lfoToAmpParam && *lfoToAmpParam > 0.5f)
             {
-                const float depthAmp = (*lfoDepthParam);          // 0…1
-                env *= juce::jlimit(0.0f, 2.0f,
-                                   1.0f + depthAmp * lastLfoValue);
+                const float depthValue = lfoDepthParam ? lfoDepthParam->load() : 0.0f;
+                const float depth = juce::jlimit(0.0f, 0.9f, depthValue); // 0-0.9
+                // map lfoRaw (-1…+1)  ⇒ gain  (1-depth … 1+depth)
+                const float ampMod = 1.0f + depth * lastLfoValue;
+                env *= ampMod;                      // no hard-zero → no click
             }
 
             float currentSample = filt * env;

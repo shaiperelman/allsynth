@@ -63,6 +63,8 @@ private:
     // Console
     juce::ComboBox     consoleModelBox;          // NEW
     juce::Label        consoleModelLabel;        // NEW
+    juce::ComboBox     delaySyncDivBox;     // delay sync division selector
+    juce::Label        delaySyncDivLabel;   // delay sync division label
 
     // --- NEW: Preset selectors -----------------------------------------------
     juce::ComboBox presetCategoryBox, presetBox;
@@ -115,6 +117,7 @@ private:
         consoleModelAttachment,
         lfoShapeAttachment,
         lfoSyncDivAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> delaySyncDivAttachment; // delay sync division attachment
     
     // ===== NEW analogue-extras toggles ========================================
     juce::TextButton freePhaseToggle{"FreePhase"}, 

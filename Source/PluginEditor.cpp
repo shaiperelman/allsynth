@@ -551,23 +551,116 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
 
     // --- LFO Sync toggle & Shape selector ----------------------------------
     addAndMakeVisible(lfoSyncToggle);
-    lfoSyncAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(vts, "LFO_SYNC", lfoSyncToggle);
+    lfoSyncAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        vts, "LFO_SYNC", lfoSyncToggle);
 
-    lfoShapeBox.addItemList({"Sine","Triangle","Saw","Square"}, 1);
+    // Clear then populate the LFO‐shape dropdown exactly once:
+    lfoShapeBox.clear(juce::dontSendNotification);
+    lfoShapeBox.addItemList({"Sine", "Triangle", "Saw", "Square"}, 1);
     addAndMakeVisible(lfoShapeBox);
     lfoShapeLabel.setText("Shape", juce::dontSendNotification);
     lfoShapeLabel.attachToComponent(&lfoShapeBox, false);
-    lfoShapeLabel.setJustificationType(juce::Justification::centredBottom);
     addAndMakeVisible(lfoShapeLabel);
-    lfoShapeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, "LFO_SHAPE", lfoShapeBox);
+    lfoShapeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        vts, "LFO_SHAPE", lfoShapeBox);
 
     // --- LFO sync division and phase offset and routing ---------------------
+    // Populate the sync‐division dropdown so it actually has items:
+    lfoSyncDivBox.clear(juce::dontSendNotification);
+    lfoSyncDivBox.addItemList({"1/1", "1/2", "1/4", "1/8", "1/16", "1/4.", "1/8."}, 1);
     addAndMakeVisible(lfoSyncDivBox);
-    lfoSyncDivAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, "LFO_SYNC_DIV", lfoSyncDivBox);
     lfoSyncDivLabel.setText("Div", juce::dontSendNotification);
     lfoSyncDivLabel.attachToComponent(&lfoSyncDivBox, false);
-    lfoSyncDivLabel.setJustificationType(juce::Justification::centredBottom);
     addAndMakeVisible(lfoSyncDivLabel);
+    lfoSyncDivAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        vts, "LFO_SYNC_DIV", lfoSyncDivBox);
+
+    addAndMakeVisible(lfoPhaseSlider);
+    lfoPhaseSlider.setSliderStyle(juce::Slider::SliderStyle::RotaryVerticalDrag);
+    lfoPhaseSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 50, 20);
+    lfoPhaseLabel.setText("Phase", juce::dontSendNotification);
+    lfoPhaseLabel.attachToComponent(&lfoPhaseSlider, false);
+    lfoPhaseLabel.setJustificationType(juce::Justification::centredBottom);
+    addAndMakeVisible(lfoPhaseLabel);
+    lfoPhaseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(vts, "LFO_PHASE", lfoPhaseSlider);
+
+    addAndMakeVisible(lfoToPitchToggle);
+    lfoToPitchAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(vts, "LFO_TO_PITCH", lfoToPitchToggle);
+    addAndMakeVisible(lfoToCutoffToggle);
+    lfoToCutoffAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(vts, "LFO_TO_CUTOFF", lfoToCutoffToggle);
+    addAndMakeVisible(lfoToAmpToggle);
+    lfoToAmpAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(vts, "LFO_TO_AMP", lfoToAmpToggle);
+
+    // --- Delay / Reverb (add Time, FB, Sync controls)-------------------------
+    addAndMakeVisible(delaySyncToggle);
+    delaySyncAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(vts,"DELAY_SYNC",delaySyncToggle);
+    // Delay sync division selector
+    delaySyncDivBox.addItemList({"1/1","1/2","1/4","1/8","1/16","1/4.","1/8."}, 1);
+    addAndMakeVisible(delaySyncDivBox);
+    delaySyncDivLabel.setText("Div", juce::dontSendNotification);
+    delaySyncDivLabel.attachToComponent(&delaySyncDivBox, false);
+    addAndMakeVisible(delaySyncDivLabel);
+    delaySyncDivAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, "DELAY_SYNC_DIV", delaySyncDivBox);
+
+    addAndMakeVisible(reverbToggle);
+    reverbToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(vts,"REVERB_ON",reverbToggle);
+
+    reverbMixSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
+    reverbMixSlider.setTextBoxStyle(juce::Slider::TextBoxBelow,false,50,20);
+    addAndMakeVisible(reverbMixSlider);
+    reverbMixLabel.setText("R-Mix", juce::dontSendNotification);
+    reverbMixLabel.attachToComponent(&reverbMixSlider,false);
+    reverbMixLabel.setJustificationType(juce::Justification::centredBottom);
+    addAndMakeVisible(reverbMixLabel);
+    reverbMixAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(vts,"REVERB_MIX",reverbMixSlider);
+
+    // NEW – Size slider
+    reverbSizeSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
+    reverbSizeSlider.setTextBoxStyle(juce::Slider::TextBoxBelow,false,50,20);
+    addAndMakeVisible(reverbSizeSlider);
+    reverbSizeLabel.setText("R-Size", juce::dontSendNotification);
+    reverbSizeLabel.attachToComponent(&reverbSizeSlider,false);
+    reverbSizeLabel.setJustificationType(juce::Justification::centredBottom);
+    addAndMakeVisible(reverbSizeLabel);
+    reverbSizeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(vts,"REVERB_SIZE",reverbSizeSlider);
+
+    // ---------- NEW : Reverb Type selector -----------------------------------
+    reverbTypeBox.addItemList({ "Classic","Hall","Plate","Shimmer",
+                               "Spring","Room","Cathedral","Gated" },1);
+    addAndMakeVisible(reverbTypeBox);
+    reverbTypeLabel.setText("R-Type", juce::dontSendNotification);
+    reverbTypeLabel.attachToComponent(&reverbTypeBox,false);
+    reverbTypeLabel.setJustificationType(juce::Justification::centredBottom);
+    addAndMakeVisible(reverbTypeLabel);
+    reverbTypeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts,
+                                                                                                    "REVERB_TYPE",
+                                                                                                    reverbTypeBox);
+
+    // --- LFO Sync toggle & Shape selector ----------------------------------
+    addAndMakeVisible(lfoSyncToggle);
+    lfoSyncAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        vts, "LFO_SYNC", lfoSyncToggle);
+
+    // Clear then populate the LFO‐shape dropdown exactly once:
+    lfoShapeBox.clear(juce::dontSendNotification);
+    lfoShapeBox.addItemList({"Sine", "Triangle", "Saw", "Square"}, 1);
+    addAndMakeVisible(lfoShapeBox);
+    lfoShapeLabel.setText("Shape", juce::dontSendNotification);
+    lfoShapeLabel.attachToComponent(&lfoShapeBox, false);
+    addAndMakeVisible(lfoShapeLabel);
+    lfoShapeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        vts, "LFO_SHAPE", lfoShapeBox);
+
+    // --- LFO sync division and phase offset and routing ---------------------
+    // Populate the sync‐division dropdown so it actually has items:
+    lfoSyncDivBox.clear(juce::dontSendNotification);
+    lfoSyncDivBox.addItemList({"1/1", "1/2", "1/4", "1/8", "1/16", "1/4.", "1/8."}, 1);
+    addAndMakeVisible(lfoSyncDivBox);
+    lfoSyncDivLabel.setText("Div", juce::dontSendNotification);
+    lfoSyncDivLabel.attachToComponent(&lfoSyncDivBox, false);
+    addAndMakeVisible(lfoSyncDivLabel);
+    lfoSyncDivAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        vts, "LFO_SYNC_DIV", lfoSyncDivBox);
 
     addAndMakeVisible(lfoPhaseSlider);
     lfoPhaseSlider.setSliderStyle(juce::Slider::SliderStyle::RotaryVerticalDrag);
@@ -625,6 +718,7 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     for (auto* lbl: {&attackLabel,&decayLabel,&sustainLabel,&releaseLabel,&cutoffLabel,&resonanceLabel,
                     &waveformLabel,&pulseWidthLabel,&modelLabel,&osc1VolLabel,&osc2VolLabel,&waveform2Label,
                     &lfoRateLabel,&lfoDepthLabel,&delayMixLabel,&delayTimeLabel,&delayFbLabel,
+                    &delaySyncDivLabel,
                     &reverbMixLabel, &reverbTypeLabel, &reverbSizeLabel,
                     &noiseMixLabel,&driveAmtLabel,&companyLabel,
                     &presetCategoryLabel,&presetLabel,&consoleModelLabel,&masterGainLabel}) {
@@ -633,7 +727,7 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     }
     
     // Style combo boxes
-    for (auto* cb: {&companyBox,&modelBox,&waveformBox,&waveform2Box,&lfoShapeBox,&presetCategoryBox,&presetBox,&consoleModelBox}) {
+    for (auto* cb: {&companyBox,&modelBox,&waveformBox,&waveform2Box,&lfoShapeBox,&presetCategoryBox,&presetBox,&consoleModelBox, &delaySyncDivBox}) {
         cb->setColour(juce::ComboBox::backgroundColourId, controlBgColor);
         cb->setColour(juce::ComboBox::textColourId, textColor);
         cb->setColour(juce::ComboBox::arrowColourId, accentColor);
@@ -642,7 +736,7 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     }
     
     // Style toggle buttons
-    for (auto* b : { &lfoToggle, &lfoSyncToggle, &noiseToggle, &driveToggle,
+    for (auto* b : { &lfoToggle, &lfoSyncToggle, &lfoToPitchToggle, &lfoToCutoffToggle, &lfoToAmpToggle, &noiseToggle, &driveToggle,
                      &delayToggle, &reverbToggle, &delaySyncToggle, &consoleToggle,
                      &freePhaseToggle, &driftToggle, &filterTolToggle,
                      &vcaClipToggle, &humToggle, &crossToggle,
@@ -1043,8 +1137,9 @@ void AllSynthPluginAudioProcessorEditor::resized()
     masterGainSlider.setBounds(envArea.reduced(envPadding));
 
     // --- Column 3: LFO & Noise/Drive ---
-    auto lfoSectionHeight = lfoNoiseArea.getHeight() * 0.45f; // More space for LFO
-    auto noiseDriveSectionHeight = lfoNoiseArea.getHeight() * 0.55f; // More space for Noise/Drive
+    // Give LFO section more vertical space
+    auto lfoSectionHeight = lfoNoiseArea.getHeight() * 0.60f; // increased from 0.45f to 0.60f
+    auto noiseDriveSectionHeight = lfoNoiseArea.getHeight() * 0.40f; // reduced noise section to 40%
 
     auto lfoArea        = lfoNoiseArea.removeFromTop(lfoSectionHeight);
     auto noiseDriveArea = lfoNoiseArea;
@@ -1052,7 +1147,7 @@ void AllSynthPluginAudioProcessorEditor::resized()
     const int numLfoRows = 7;
     auto lfoRowHeight = lfoArea.getHeight() / numLfoRows;
     auto lfoPaddingX = 30; // More horizontal padding for toggles
-    auto lfoPaddingY = 8;
+    auto lfoPaddingY = 12; // increase vertical padding for LFO rows
     // Row 1: LFO On and Tempo Sync Toggle
     auto lfoToggleRow = lfoArea.removeFromTop(lfoRowHeight);
     lfoToggle.setCentrePosition(lfoToggleRow.getCentreX() - 40, lfoToggleRow.getCentreY());
@@ -1109,9 +1204,15 @@ void AllSynthPluginAudioProcessorEditor::resized()
     auto delayRightColumn = delayArea;
     
     // Left column: Delay Mix and Delay Time
-    delayMixSlider.setBounds(delayLeftColumn.removeFromTop(delayLeftColumn.getHeight() * 0.7f).reduced(fxSliderPadding));
-    auto delaySyncRow = delayLeftColumn.reduced(fxPaddingX, 0);
-    delaySyncToggle.setCentrePosition(delaySyncRow.getCentreX(), delaySyncRow.getCentreY());
+    auto mixArea = delayLeftColumn.removeFromTop(delayLeftColumn.getHeight() * 0.7f);
+    delayMixSlider.setBounds(mixArea.reduced(fxSliderPadding));
+    // Delay sync toggle row
+    auto syncRowArea = delayLeftColumn.removeFromTop(toggleHeight);
+    delaySyncToggle.setCentrePosition(syncRowArea.getCentreX(), syncRowArea.getCentreY());
+    // Delay sync division combobox row
+    auto divRowArea = delayLeftColumn.removeFromTop(comboBoxHeight);
+    delaySyncDivBox.setBounds(divRowArea.reduced(fxPaddingX, fxPaddingY));
+    delaySyncDivLabel.setTopLeftPosition(delaySyncDivBox.getX(), delaySyncDivBox.getY() - 25);
     
     // Right column: Delay Feedback
     delayTimeSlider.setBounds(delayRightColumn.removeFromTop(delayRightColumn.getHeight() * 0.5f).reduced(fxSliderPadding));

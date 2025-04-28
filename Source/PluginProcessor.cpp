@@ -148,6 +148,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout AllSynthPluginAudioProcessor
     params.push_back(std::make_unique<juce::AudioParameterFloat>  ("DELAY_FB",     "Delay Feedback",
                                      juce::NormalisableRange<float>(0.0f,0.95f,0.001f), 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterBool>   ("DELAY_SYNC",   "Delay Sync", false));
+    // Delay sync division choices
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "DELAY_SYNC_DIV", "Delay Sync Div",
+        juce::StringArray{"1/1","1/2","1/4","1/8","1/16","1/4.","1/8."},
+        2));
     params.push_back(std::make_unique<juce::AudioParameterBool>   ("REVERB_ON",    "Reverb On", false));
     params.push_back(std::make_unique<juce::AudioParameterFloat>  ("REVERB_MIX",   "Reverb Mix",
                                      juce::NormalisableRange<float>(0.0f,1.0f,0.001f), 0.3f));

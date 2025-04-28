@@ -279,6 +279,7 @@ void AllSynthPluginAudioProcessor::prepareToPlay(double sampleRate, int samplesP
     fatOnParam     = parameters.getRawParameterValue("CONSOLE_ON");
     fatModeParam   = parameters.getRawParameterValue("CONSOLE_MODEL");
     delayOnParam   = parameters.getRawParameterValue("DELAY_ON");
+    delaySyncDivParam = parameters.getRawParameterValue("DELAY_SYNC_DIV");
     reverbOnParam  = parameters.getRawParameterValue("REVERB_ON");
     reverbTypeParam= parameters.getRawParameterValue("REVERB_TYPE");
     reverbSizeParam= parameters.getRawParameterValue("REVERB_SIZE");   // NEW
@@ -376,12 +377,25 @@ void AllSynthPluginAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     // ---- calc (possibly BPM‑synced) delay time ------------------------------
     double delaySeconds = timeMsPar * 0.001;
     if (syncOn)
+    {
+        bool hostSync = false;
         if (auto* ph = getPlayHead())
         {
             juce::AudioPlayHead::CurrentPositionInfo pos;
-            if (ph->getCurrentPosition(pos) && pos.bpm > 0)
-                delaySeconds = 60.0 / pos.bpm;          // quarter‑note
+            if (ph->getCurrentPosition(pos) && pos.bpm > 0.0)
+                hostSync = true;
+            if (hostSync && delaySyncDivParam)
+            {
+                // compute quarter-note seconds and apply sync division
+                static const std::array<double,7> divFactors = { 1.0, 2.0, 4.0, 8.0, 16.0, 1.5, 3.0 };
+                int idx = int (delaySyncDivParam->load());
+                idx = juce::jlimit(0, 6, idx);
+                double qNoteSec = 60.0 / pos.bpm;
+                delaySeconds = qNoteSec / divFactors[idx];
+            }
+            // otherwise, fallback to manual timeMsPar
         }
+    }
 
     // process L & R separately
     if (delayOn)

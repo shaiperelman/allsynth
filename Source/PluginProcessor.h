@@ -82,6 +82,7 @@ private:
     std::atomic<float>* fatOnParam     = nullptr;
     std::atomic<float>* fatModeParam   = nullptr;
     std::atomic<float>* delayOnParam   = nullptr;
+    std::atomic<float>* delaySyncDivParam = nullptr;  // Delay sync division selector
     std::atomic<float>* reverbOnParam  = nullptr;
     std::atomic<float>* reverbTypeParam = nullptr;
     std::atomic<float>* reverbSizeParam = nullptr;

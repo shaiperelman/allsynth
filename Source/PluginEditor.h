@@ -150,5 +150,10 @@ private:
     juce::Image backgroundImage;
     void drawVintageBackground(juce::Graphics& g);
 
+    // Tap-tempo controls for unsynced delay
+    juce::TextButton   tapTempoButton{"Tap"};
+    juce::Label        tempoLabel;
+    std::vector<double> tapTimes;         // timestamps for tap-tempo
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AllSynthPluginAudioProcessorEditor)
 }; 

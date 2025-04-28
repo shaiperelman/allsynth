@@ -93,6 +93,9 @@ void SynthVoice::prepare(double sampleRate, int samplesPerBlock, int /*outputCha
     legatoParam     = parameters.getRawParameterValue("ANA_LEGATO"); // NEW: single-trigger ADSR
     // NEW: cache LFO sync toggle and initialize tempo-syncable LFO
     lfoSyncParam    = parameters.getRawParameterValue("LFO_SYNC");
+    lfoSyncDivParam = parameters.getRawParameterValue("LFO_SYNC_DIV");
+    lfoShapeParam   = parameters.getRawParameterValue("LFO_SHAPE");
+    lfoPhaseParam   = parameters.getRawParameterValue("LFO_PHASE");
 
     // Initialize and prepare LFO oscillator
     lfoOsc.initialise([](float x) { return std::sin(juce::MathConstants<float>::twoPi * x); }, 128);
@@ -156,16 +159,36 @@ float SynthVoice::computeOscSample()
     float lfoDpParam = *lfoDepthParam; // Get raw 0-1 param
     float depth  = lfoDpParam * lfoDpParam * 0.08f; // Quadratic scaling, max ~8%
 
-    // --- LFO using dsp::Oscillator with optional tempo-sync ---
+    // --- LFO using dsp::Oscillator with division, shape and optional tempo-sync ---
     float lfoVal = 0.0f;
     if (lfoOn)
     {
         // Determine LFO rate (Hz)
         double rateHz = lfoRt;
-        if (lfoSyncParam && *lfoSyncParam > 0.5f)
+        if (lfoSyncParam && *lfoSyncParam > 0.5f && hostBpm > 0.0)
         {
-            // Quarter-note sync: LFO frequency = BPM / 60
-            rateHz = hostBpm / 60.0;
+            // Host-sync with user-selected division
+            static const std::array<double,7> divFactors = {1.0, 2.0, 4.0, 8.0, 16.0, 1.5, 3.0};
+            int idx = lfoSyncDivParam ? int(lfoSyncDivParam->load()) : 2;
+            idx = juce::jlimit(0, int(divFactors.size()-1), idx);
+            rateHz = hostBpm / 60.0 / divFactors[idx];
+        }
+        // Reinitialize waveform if shape param changed
+        if (lfoShapeParam)
+        {
+            int shape = int(lfoShapeParam->load());
+            if (shape != previousLfoShape)
+            {
+                switch (shape)
+                {
+                    case 0: lfoOsc.initialise([](float x){ return std::sin(juce::MathConstants<float>::twoPi * x); }, 128); break;
+                    case 1: lfoOsc.initialise([](float x){ return x < 0.5f ? 4.0f*x - 1.0f : 3.0f - 4.0f*x; }, 128); break;
+                    case 2: lfoOsc.initialise([](float x){ return 2.0f*x - 1.0f; }, 128); break;
+                    case 3: lfoOsc.initialise([](float x){ return x < 0.5f ? 1.0f : -1.0f; }, 128); break;
+                    default: break;
+                }
+                previousLfoShape = shape;
+            }
         }
         lfoOsc.setFrequency((float)rateHz);
         // process LFO sample (-1..1)

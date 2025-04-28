@@ -142,6 +142,8 @@ private:
     double hostBpm { 120.0 };                      // current host BPM
     std::atomic<float>* lfoSyncParam = nullptr;    // tempo-sync toggle
     std::atomic<float>* lfoShapeParam = nullptr;   // LFO waveform shape
+    std::atomic<float>* lfoSyncDivParam = nullptr; // LFO sync division selector
+    std::atomic<float>* lfoPhaseParam = nullptr;   // LFO phase offset (0..1)
     int previousLfoShape = -1;                    // cache last applied LFO shape
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SynthVoice)

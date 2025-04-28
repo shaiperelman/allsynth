@@ -537,17 +537,17 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     addAndMakeVisible(reverbSizeLabel);
     reverbSizeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(vts,"REVERB_SIZE",reverbSizeSlider);
 
-    // ---------- NEW : Reverb Type selector -----------------------------------
-    reverbTypeBox.addItemList({ "Classic","Hall","Plate","Shimmer",
-                               "Spring","Room","Cathedral","Gated" },1);
+    // --- NEW : Reverb Type selector -----------------------------------
+    reverbTypeBox.clear(juce::dontSendNotification);
+    reverbTypeBox.addItemList({ "Classic", "Hall", "Plate", "Shimmer",
+                                "Spring", "Room", "Cathedral", "Gated" }, 1);
     addAndMakeVisible(reverbTypeBox);
     reverbTypeLabel.setText("R-Type", juce::dontSendNotification);
-    reverbTypeLabel.attachToComponent(&reverbTypeBox,false);
+    reverbTypeLabel.attachToComponent(&reverbTypeBox, false);
     reverbTypeLabel.setJustificationType(juce::Justification::centredBottom);
     addAndMakeVisible(reverbTypeLabel);
-    reverbTypeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts,
-                                                                                                    "REVERB_TYPE",
-                                                                                                    reverbTypeBox);
+    reverbTypeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        vts, "REVERB_TYPE", reverbTypeBox);
 
     // --- LFO Sync toggle & Shape selector ----------------------------------
     addAndMakeVisible(lfoSyncToggle);
@@ -677,6 +677,56 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     lfoToCutoffAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(vts, "LFO_TO_CUTOFF", lfoToCutoffToggle);
     addAndMakeVisible(lfoToAmpToggle);
     lfoToAmpAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(vts, "LFO_TO_AMP", lfoToAmpToggle);
+
+    // --- tap-tempo & tempo display (unsynced delay only) -------------
+    addAndMakeVisible(tapTempoButton);
+    tapTempoButton.setTooltip("Tap to set delay time (quarter-note)");
+    tapTempoButton.onClick = [this]()
+    {
+        auto now = juce::Time::getMillisecondCounterHiRes();
+        tapTimes.push_back(now);
+        if (tapTimes.size() > 4)
+            tapTimes.erase(tapTimes.begin());  // keep last 4 taps
+
+        if (tapTimes.size() >= 2)
+        {
+            double sum = 0;
+            for (size_t i = 1; i < tapTimes.size(); ++i)
+                sum += (tapTimes[i] - tapTimes[i-1]);
+            double avgMs = sum / (tapTimes.size() - 1);
+            double bpm   = 60000.0 / avgMs;
+
+            tempoLabel.setText(juce::String(bpm, 1) + " BPM", juce::dontSendNotification);
+
+            // set delay time slider to quarter-note in ms
+            delayTimeSlider.setValue(avgMs, juce::sendNotification);
+        }
+    };
+
+    addAndMakeVisible(tempoLabel);
+    tempoLabel.setJustificationType(juce::Justification::centred);
+    tempoLabel.setText("-- BPM", juce::dontSendNotification);
+
+    // show/hide tap controls: only hide when syncing to host BPM, otherwise show for tap sync or manual
+    auto updateTapVis = [this]()
+    {
+        bool syncOn = delaySyncToggle.getToggleState();
+        bool hostSync = false;
+        if (syncOn)
+        {
+            if (auto* ph = processor.getPlayHead())
+            {
+                juce::AudioPlayHead::CurrentPositionInfo pos;
+                if (ph->getCurrentPosition(pos) && pos.bpm > 0.0)
+                    hostSync = true;
+            }
+        }
+        // hide tap controls if we are syncing to host; show otherwise (manual or tap sync)
+        tapTempoButton.setVisible(!hostSync);
+        tempoLabel    .setVisible(!hostSync);
+    };
+    updateTapVis();
+    delaySyncToggle.onClick = updateTapVis;
 
     // After creating all the sliders but before styling
     
@@ -841,7 +891,7 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     // (this overrides the "rotarySliderFillColourId" per control section)
     const juce::Colour oscColour    = juce::Colour(0, 215, 187);  // Teal (oscillators)
     const juce::Colour filterColour = juce::Colour(88, 97, 224);  // Purple (filter/env)
-    const juce::Colour lfoColour    = juce::Colour(224, 88, 97);  // Coral (LFO/noise‑drive)
+    const juce::Colour lfoColour    = juce::Colour(224, 88, 97);  // Coral (LFO/noise-drive)
     const juce::Colour fxColour     = juce::Colour(97, 224, 88);  // Lime (delay/reverb)
 
     // Oscillator section sliders
@@ -862,16 +912,20 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
         slider->setColour(juce::Slider::thumbColourId, filterColour);
     }
 
-    // LFO / Noise‑Drive sliders
+    // LFO / Noise-Drive sliders
     for (auto* slider : {&lfoRateSlider, &lfoDepthSlider, &noiseMixSlider, &driveAmtSlider}) {
         slider->setColour(juce::Slider::rotarySliderFillColourId, lfoColour);
         slider->setColour(juce::Slider::thumbColourId, lfoColour);
     }
 
-    // FX sliders (delay & reverb)
-    for (auto* slider : {&delayMixSlider, &delayTimeSlider, &delayFeedbackSlider, &reverbMixSlider, &reverbSizeSlider}) {
-        slider->setColour(juce::Slider::rotarySliderFillColourId, fxColour);
-        slider->setColour(juce::Slider::thumbColourId, fxColour);
+    // FX sliders: separate delay and reverb colours
+    for (auto* slider : {&delayMixSlider, &delayTimeSlider, &delayFeedbackSlider}) {
+        slider->setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(88, 97, 224));  // Purple (delay)
+        slider->setColour(juce::Slider::thumbColourId, juce::Colour(88, 97, 224));
+    }
+    for (auto* slider : {&reverbMixSlider, &reverbSizeSlider}) {
+        slider->setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(97, 224, 88));  // Lime (reverb)
+        slider->setColour(juce::Slider::thumbColourId, juce::Colour(97, 224, 88));
     }
 
     // Model section ComboBoxes
@@ -881,26 +935,49 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     modelBox.setColour(juce::ComboBox::buttonColourId, filterColour.darker(0.2f));
 
     // Effect ComboBoxes
-    reverbTypeBox.setColour(juce::ComboBox::arrowColourId, fxColour);
-    consoleModelBox.setColour(juce::ComboBox::arrowColourId, fxColour);
-    reverbTypeBox.setColour(juce::ComboBox::buttonColourId, fxColour.darker(0.2f));
-    consoleModelBox.setColour(juce::ComboBox::buttonColourId, fxColour.darker(0.2f));
+    reverbTypeBox.setColour(juce::ComboBox::arrowColourId, juce::Colour(97, 224, 88));  // Lime (reverb)
+    consoleModelBox.setColour(juce::ComboBox::arrowColourId, juce::Colour(97, 224, 88));  // Lime (reverb)
+    reverbTypeBox.setColour(juce::ComboBox::buttonColourId, juce::Colour(97, 224, 88).darker(0.2f));  // Darker lime
+    consoleModelBox.setColour(juce::ComboBox::buttonColourId, juce::Colour(97, 224, 88).darker(0.2f));  // Darker lime
 
     // Toggles with matching section colours
     lfoToggle.setColour(juce::TextButton::buttonOnColourId, lfoColour);
     noiseToggle.setColour(juce::TextButton::buttonOnColourId, lfoColour);
     driveToggle.setColour(juce::TextButton::buttonOnColourId, lfoColour);
 
-    delayToggle.setColour(juce::TextButton::buttonOnColourId, fxColour);
-    delaySyncToggle.setColour(juce::TextButton::buttonOnColourId, fxColour);
-    reverbToggle.setColour(juce::TextButton::buttonOnColourId, fxColour);
-    consoleToggle.setColour(juce::TextButton::buttonOnColourId, fxColour);
+    delayToggle.setColour(juce::TextButton::buttonOnColourId, juce::Colour(88, 97, 224));  // Purple (delay)
+    delaySyncToggle.setColour(juce::TextButton::buttonOnColourId, juce::Colour(88, 97, 224));  // Purple (delay)
+    reverbToggle.setColour(juce::TextButton::buttonOnColourId, juce::Colour(97, 224, 88));  // Lime (reverb)
+    consoleToggle.setColour(juce::TextButton::buttonOnColourId, juce::Colour(97, 224, 88));  // Lime (reverb)
     // =========================================================================
 
     // Build the cached background once:
     backgroundImage = juce::Image(juce::Image::ARGB, getWidth(), getHeight(), true);
     juce::Graphics ig{ backgroundImage };  // Use brace initialization to avoid vexing parse
     drawVintageBackground(ig);
+
+    // show/hide LFO sync controls: hide when host-sync, show otherwise
+    auto updateLfoVis = [this]()
+    {
+        bool syncOn  = lfoSyncToggle.getToggleState();
+        bool hostSync = false;
+        if (syncOn)
+        {
+            if (auto* ph = processor.getPlayHead())
+            {
+                juce::AudioPlayHead::CurrentPositionInfo pos;
+                if (ph->getCurrentPosition(pos) && pos.bpm > 0.0)
+                    hostSync = true;
+            }
+        }
+        bool showControls = syncOn && !hostSync;
+        lfoSyncDivBox.setVisible(showControls);
+        lfoPhaseSlider.setVisible(showControls);
+        lfoSyncDivLabel.setVisible(showControls);
+        lfoPhaseLabel.setVisible(showControls);
+    };
+    updateLfoVis();
+    lfoSyncToggle.onClick = updateLfoVis;
 }
 
 //==============================================================================
@@ -1152,38 +1229,36 @@ void AllSynthPluginAudioProcessorEditor::resized()
     auto lfoToggleRow = lfoArea.removeFromTop(lfoRowHeight);
     lfoToggle.setCentrePosition(lfoToggleRow.getCentreX() - 40, lfoToggleRow.getCentreY());
     lfoSyncToggle.setCentrePosition(lfoToggleRow.getCentreX() + 40, lfoToggleRow.getCentreY());
-    // Row 2: Rate
-    auto rateRow = lfoArea.removeFromTop(lfoRowHeight);
-    lfoRateSlider.setBounds(rateRow.reduced(envPadding));
-    // Row 3: Depth
-    auto depthRow = lfoArea.removeFromTop(lfoRowHeight);
-    lfoDepthSlider.setBounds(depthRow.reduced(envPadding));
-    // Row 4: Shape selector
+    // Row 2: Rate, Depth, Phase sliders side-by-side
+    auto slidersRow = lfoArea.removeFromTop(lfoRowHeight * 1.5f); // Allocate more height for sliders+labels
+    int sliderWidth = slidersRow.getWidth() / 3;
+    lfoRateSlider.setBounds(slidersRow.removeFromLeft(sliderWidth).reduced(envPadding));
+    lfoDepthSlider.setBounds(slidersRow.removeFromLeft(sliderWidth).reduced(envPadding));
+    lfoPhaseSlider.setBounds(slidersRow.reduced(envPadding)); // Remaining space
+    // Row 3 (was 4): Shape selector
     auto shapeRow = lfoArea.removeFromTop(lfoRowHeight);
     lfoShapeBox.setBounds(shapeRow.reduced(lfoPaddingX, lfoPaddingY));
     lfoShapeLabel.setTopLeftPosition(lfoShapeBox.getX(), lfoShapeBox.getY() - 25);
-    // Row 5: Sync Division
+    // Row 4 (was 5): Sync Division
     auto divRow = lfoArea.removeFromTop(lfoRowHeight);
     lfoSyncDivBox.setBounds(divRow.reduced(lfoPaddingX, lfoPaddingY));
     lfoSyncDivLabel.setTopLeftPosition(lfoSyncDivBox.getX(), lfoSyncDivBox.getY() - 25);
-    // Row 6: Phase offset
-    auto phaseRow = lfoArea.removeFromTop(lfoRowHeight);
-    lfoPhaseSlider.setBounds(phaseRow.reduced(lfoPaddingX, lfoPaddingY));
-    lfoPhaseLabel.setTopLeftPosition(lfoPhaseSlider.getX(), lfoPhaseSlider.getY() - 25);
-    // Row 7: Routing toggles (Pitch, Cutoff, Amp)
+    // Row 5 (was 6): Routing toggles (Pitch, Cutoff, Amp) - Phase is moved
     auto routeRow = lfoArea.removeFromTop(lfoRowHeight);
     int toggleW = 60;
     lfoToPitchToggle.setBounds(routeRow.removeFromLeft(toggleW).withTrimmedTop(5).withTrimmedBottom(5));
     lfoToCutoffToggle.setBounds(routeRow.removeFromLeft(toggleW).withTrimmedTop(5).withTrimmedBottom(5));
     lfoToAmpToggle.setBounds(routeRow.removeFromLeft(toggleW).withTrimmedTop(5).withTrimmedBottom(5));
-
-    auto noiseDriveRowHeight = noiseDriveArea.getHeight() / 4;
+    // Row 6 (was 7): Noise Toggle
+    auto noiseDriveRowHeight = noiseDriveArea.getHeight() / 3; // Now 3 rows in noise/drive
     auto noiseToggleRow = noiseDriveArea.removeFromTop(noiseDriveRowHeight);
     noiseToggle.setCentrePosition(noiseToggleRow.getCentreX(), noiseToggleRow.getCentreY());
+    // Row 7 (was 8): Noise Mix slider
     noiseMixSlider.setBounds(noiseDriveArea.removeFromTop(noiseDriveRowHeight).reduced(envPadding));
-    auto driveToggleRow = noiseDriveArea.removeFromTop(noiseDriveRowHeight);
-    driveToggle.setCentrePosition(driveToggleRow.getCentreX(), driveToggleRow.getCentreY());
-    driveAmtSlider.setBounds(noiseDriveArea.reduced(envPadding));
+    // Row 8 (was 9): Drive Toggle & Slider
+    auto driveRow = noiseDriveArea; // Remaining area
+    driveToggle.setCentrePosition(driveRow.getCentreX() - 40, driveRow.getCentreY());
+    driveAmtSlider.setBounds(driveRow.reduced(envPadding).withLeft(driveRow.getCentreX() + 10)); // Place slider next to toggle
 
     // --- Column 4: FX ---
     auto fxPaddingX = 20; // Reduced horizontal padding for toggles
@@ -1194,7 +1269,13 @@ void AllSynthPluginAudioProcessorEditor::resized()
     // --- DELAY SECTION ---
     // Allocate area for delay section
     auto delayArea = fxArea.removeFromTop(fxArea.getHeight() * 0.45f);
-    
+
+    // Position tap-tempo button and tempo label at bottom of delay section
+    auto tapRowArea     = delayArea.removeFromBottom(toggleHeight);
+    auto tapButtonArea  = tapRowArea.removeFromLeft(tapRowArea.getWidth() / 2);
+    tapTempoButton.setBounds(tapButtonArea.reduced(5, 5));
+    tempoLabel.setBounds(tapRowArea.reduced(5, 5));
+
     // Delay toggle in its own row at top
     auto delayToggleRow = delayArea.removeFromTop(toggleHeight);
     delayToggle.setCentrePosition(delayToggleRow.getCentreX(), delayToggleRow.getCentreY());

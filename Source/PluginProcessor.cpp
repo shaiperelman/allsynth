@@ -222,6 +222,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout AllSynthPluginAudioProcessor
         "MASTER_GAIN", "Master Gain",
         juce::NormalisableRange<float>(0.0f, 1.5f, 0.001f), 1.0f));
 
+    // -------- New : Filter Oversampling --------------------------------
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "FILTER_OS", "Filter Oversampling",
+        juce::StringArray{ "Off", "2×", "4×" },
+        0));
+    // ----------------------------------------------------------------
+
     return { params.begin(), params.end() };
 }
 
@@ -265,7 +272,7 @@ void AllSynthPluginAudioProcessor::prepareToPlay(double sampleRate, int samplesP
         juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 24000.f);
     fatChain.get<2>().coefficients =                // tone 2 (bypassed ‑ flat) - NEW
         juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, 24000.f);
-
+    
     fatChain.get<3>().setRatio(4.0f);               // comp (index is now 3)
     fatChain.get<3>().setAttack(5.f);
     fatChain.get<3>().setRelease(60.f);

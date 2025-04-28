@@ -978,6 +978,17 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     };
     updateLfoVis();
     lfoSyncToggle.onClick = updateLfoVis;
+
+    // --- Filter Oversampling ----------------------------------
+    filterOsLabel.setText ("OS", juce::dontSendNotification);
+    addAndMakeVisible (filterOsLabel);
+
+    filterOsBox.addItemList ({ "Off", "2×", "4×" }, 1);
+    addAndMakeVisible (filterOsBox);
+
+    filterOsAttachment = std::make_unique<juce::AudioProcessorValueTreeState::
+                          ComboBoxAttachment>(processor.getValueTreeState(),
+                                              "FILTER_OS", filterOsBox);
 }
 
 //==============================================================================
@@ -1199,8 +1210,16 @@ void AllSynthPluginAudioProcessorEditor::resized()
     auto filterArea = filterEnvArea.removeFromTop(filterSectionHeight);
     auto envArea    = filterEnvArea;
 
+    // First row: Oversampling selector (small box centred)
+    const int osBoxHeight = 25;
+    auto osRow = filterArea.removeFromTop(osBoxHeight);
+    const int osBoxWidth = 60;
+    filterOsBox.setBounds(osRow.withSizeKeepingCentre(osBoxWidth, osBoxHeight));
+    filterOsLabel.setTopLeftPosition(filterOsBox.getX(), filterOsBox.getY() - 18);
+
+    // Remaining area for cutoff / resonance sliders
     auto filterSliderWidth = filterArea.getWidth() / 2;
-    auto filterPadding = 10; // Increase padding
+    auto filterPadding = 10; // Increased padding
     cutoffSlider   .setBounds(filterArea.removeFromLeft(filterSliderWidth).reduced(filterPadding));
     resonanceSlider.setBounds(filterArea.reduced(filterPadding));
 

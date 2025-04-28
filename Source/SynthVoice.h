@@ -35,6 +35,7 @@ private:
     //==============================================================================
     float computeOscSample();
     void updateParams();
+    void configureOversampling();
 
     // Members
     juce::AudioProcessorValueTreeState& parameters;
@@ -152,6 +153,13 @@ private:
     juce::LinearSmoothedValue<float> ampModSmoothed; // Smoothing for Amp LFO
     // -----------------------------------------------------------------------
     int previousLfoShape = -1;                    // cache last applied LFO shape
+
+    // ===== Oversampling (filter path) =====================================
+    std::unique_ptr<juce::dsp::Oversampling<float>> oversampler; // nullptr when OS off
+    std::atomic<float>* osModeParam = nullptr;   // pointer to FILTER_OS parameter
+    int    currentOsMode        = -1;            // cache selected mode (0=off)
+    int    samplesPerBlockCached = 0;            // saved for oversampler init
+    // =========================================================================
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SynthVoice)
 }; 

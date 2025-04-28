@@ -40,7 +40,7 @@ private:
                       delayToggle   { "Delay" },
                       reverbToggle  { "Reverb" },
                       delaySyncToggle{ "Sync" },
-                      consoleToggle { "Fat On" };
+                      consoleToggle { "Fat" };
     juce::Slider       lfoRateSlider, lfoDepthSlider;
     juce::TextButton   lfoSyncToggle { "Sync" };   // Tempo-sync toggle for LFO
     juce::ComboBox     lfoShapeBox;                   // LFO shape selector
@@ -65,6 +65,13 @@ private:
     juce::Label        consoleModelLabel;        // NEW
     juce::ComboBox     delaySyncDivBox;     // delay sync division selector
     juce::Label        delaySyncDivLabel;   // delay sync division label
+
+    // ===== Oversampling selector =====================================
+    juce::ComboBox  filterOsBox;
+    juce::Label     filterOsLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
+                     filterOsAttachment;
+    // =========================================================================
 
     // --- NEW: Preset selectors -----------------------------------------------
     juce::ComboBox presetCategoryBox, presetBox;

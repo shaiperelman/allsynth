@@ -39,12 +39,16 @@ bool SynthVoice::canPlaySound(SynthesiserSound* sound)
 
 void SynthVoice::prepare(double sampleRate, int samplesPerBlock, int /*outputChannels*/)
 {
-    currentSampleRate = sampleRate;
-
+    currentSampleRate       = sampleRate;
+    samplesPerBlockCached   = samplesPerBlock;
+    osModeParam            = parameters.getRawParameterValue("FILTER_OS");
+    configureOversampling();   // sets up `oversampler`, calls filterChain.prepare(...) & svFilter.prepare(...)
+    
+    // --- existing dsp::ProcessSpec at voice rate (not used when os on) ---
     dsp::ProcessSpec spec;
-    spec.sampleRate = sampleRate;
+    spec.sampleRate       = sampleRate;
     spec.maximumBlockSize = static_cast<uint32>(samplesPerBlock);
-    spec.numChannels = 1;
+    spec.numChannels      = 1;
 
     // Reset and prepare the filter chain
     filterChain.reset();
@@ -317,35 +321,41 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
     if (!isVoiceActive())
         return;
 
+    configureOversampling();  // live switch
     updateParams();
 
-    const bool useSVF = (static_cast<int>(*modelParam) == 2 || 
-                         static_cast<int>(*modelParam) == 3 || 
+    const bool useSVF = (static_cast<int>(*modelParam) == 2 ||
+                         static_cast<int>(*modelParam) == 3 ||
                          static_cast<int>(*modelParam) == 6);
 
-    if (!useSVF)
+    // ----- LADDER filter path ---------------------------------------------
+    if (! useSVF)
     {
-        // Just clear the pre-allocated buffer; we'll only process [0..numSamples)
-        auto& tempBuffer = scratchBuffer;
-        tempBuffer.clear();  
+        // clear & fill scratchBuffer as before...
+        auto& tmp = scratchBuffer; tmp.clear();
+        for (int i = 0; i < numSamples; ++i)
+            tmp.setSample (0, i, computeOscSample());
 
-        // Fill temp buffer with oscillator output
-        for (int sample = 0; sample < numSamples; ++sample)
+        auto hostBlock = juce::dsp::AudioBlock<float>(tmp)
+                            .getSubBlock (0, (size_t) numSamples);
+
+        if (oversampler)
         {
-            float oscSample = computeOscSample();
-            tempBuffer.setSample(0, sample, oscSample);
+            auto upBlock = oversampler->processSamplesUp(hostBlock);
+            juce::dsp::ProcessContextReplacing<float> ctxUp (upBlock);
+            filterChain.process(ctxUp);
+            oversampler->processSamplesDown(hostBlock);
+        }
+        else
+        {
+            juce::dsp::ProcessContextReplacing<float> ctx (hostBlock);
+            filterChain.process(ctx);
         }
 
-        // Process only the first numSamples via getSubBlock()
-        auto block = juce::dsp::AudioBlock<float>(tempBuffer)
-                        .getSubBlock(0, (size_t)numSamples);
-        juce::dsp::ProcessContextReplacing<float> context(block);
-        filterChain.process(context);
-
-        // Apply ADSR and copy to output buffer
+        // ... then ADSR, LFO→amp, copying to outputBuffer unchanged ...
         for (int sample = 0; sample < numSamples; ++sample)
         {
-            float filtered = tempBuffer.getSample(0, sample);
+            float filtered = tmp.getSample(0, sample);
             float env = adsr.getNextSample();
             if (analogEnvParam && *analogEnvParam > 0.5f)
                 env = std::sqrt(env);   // RC-style analog curve
@@ -370,13 +380,35 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
                 outputBuffer.addSample(channel, startSample + sample, currentSample);
         }
     }
-    else // State Variable Filter path (remains unchanged)
+    else
     {
+        // SV-filter path – similar wrapping…
+        auto& tmp = scratchBuffer; tmp.clear();
+        for (int i = 0; i < numSamples; ++i)
+            tmp.setSample (0, i, computeOscSample());
+
+        auto hostBlock = juce::dsp::AudioBlock<float>(tmp)
+                            .getSubBlock(0, (size_t) numSamples);
+
+        if (oversampler)
+        {
+            auto upBlock = oversampler->processSamplesUp(hostBlock);
+            float* d = upBlock.getChannelPointer (0);
+            for (size_t i = 0; i < upBlock.getNumSamples(); ++i)
+                d[i] = svFilter.processSample(0, d[i]);
+            oversampler->processSamplesDown(hostBlock);
+        }
+        else
+        {
+            for (int i = 0; i < numSamples; ++i)
+                tmp.setSample(0, i,
+                              svFilter.processSample(0, tmp.getSample(0, i)));
+        }
+
+        // ... then drive → ADSR → LFO→amp → copy unchanged …
         for (int sample = 0; sample < numSamples; ++sample)
         {
-            float osc = computeOscSample();
-            float filt = svFilter.processSample(0, osc);
-            filt = std::tanh(1.4f * filt);     // simple drive
+            float filtered = tmp.getSample(0, sample);
             float env = adsr.getNextSample();
             if (analogEnvParam && *analogEnvParam > 0.5f)
                 env = std::sqrt(env);   // RC-style analog curve
@@ -394,14 +426,14 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
             env *= ampModSmoothed.getNextValue();       // Apply the SMOOTHED value
             // ----------------------------------------------------------------
 
-            float currentSample = filt * env;
+            float currentSample = filtered * env;
 
             for (int channel = 0; channel < outputBuffer.getNumChannels(); ++channel)
                 outputBuffer.addSample(channel, startSample + sample, currentSample);
         }
     }
 
-    if (!adsr.isActive())
+    if (! adsr.isActive())
         clearCurrentNote();
 }
 
@@ -882,4 +914,44 @@ updateFilterOnly:
     adsrParams.release = *releaseParam;
 
     adsr.setParameters(adsrParams);
+}
+
+void SynthVoice::configureOversampling()
+{
+    const int desired = osModeParam ? int(osModeParam->load()) : 0;
+    if (desired == currentOsMode)
+        return;
+    currentOsMode = desired;
+
+    size_t factor = 1;
+    // JUCE uses template-local enum for filter type
+    auto   ftype  = juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR;
+
+    switch (desired)
+    {
+        case 1: factor = 2; break; // 2×
+        case 2: factor = 4; break; // 4×
+        default: factor = 1; break; // Off
+    }
+
+    if (factor == 1)
+    {
+        oversampler.reset();
+    }
+    else
+    {
+        oversampler = std::make_unique<juce::dsp::Oversampling<float>>(1, factor, ftype);
+        oversampler->initProcessing (static_cast<uint32>(samplesPerBlockCached));
+    }
+
+    // re-prepare both filterChain and svFilter at new (base × factor) rate
+    const double srOS = currentSampleRate * double(factor);
+    juce::dsp::ProcessSpec specOS {
+        srOS,
+        static_cast<uint32>(samplesPerBlockCached * factor),
+        1
+    };
+
+    filterChain.reset();  filterChain.prepare(specOS);
+    svFilter.reset();     svFilter.prepare   (specOS);
 } 

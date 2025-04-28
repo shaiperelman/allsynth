@@ -156,44 +156,48 @@ float SynthVoice::computeOscSample()
     // LFO
     bool  lfoOn  = *lfoOnParam > 0.5f;
     float lfoRt  = *lfoRateParam;
-    float lfoDpParam = *lfoDepthParam; // Get raw 0-1 param
-    float depth  = lfoDpParam * lfoDpParam * 0.08f; // Quadratic scaling, max ~8%
+    float lfoDpParam = *lfoDepthParam;                 // 0-1 slider
+    float depth  = lfoDpParam * lfoDpParam * 0.08f;    // quadratic, max ≈ 8 %
 
-    // --- LFO using dsp::Oscillator with division, shape and optional tempo-sync ---
     float lfoVal = 0.0f;
     if (lfoOn)
     {
-        // Determine LFO rate (Hz)
+        // -------- 1. work out rate in Hz (free-run or beat-synced) ----------
         double rateHz = lfoRt;
         if (lfoSyncParam && *lfoSyncParam > 0.5f && hostBpm > 0.0)
         {
-            // Host-sync with user-selected division
-            static const std::array<double,7> divFactors = {1.0, 2.0, 4.0, 8.0, 16.0, 1.5, 3.0};
+            static const std::array<double,7> div = {1,2,4,8,16,1.5,3};
             int idx = lfoSyncDivParam ? int(lfoSyncDivParam->load()) : 2;
-            idx = juce::jlimit(0, int(divFactors.size()-1), idx);
-            rateHz = hostBpm / 60.0 / divFactors[idx];
+            idx = juce::jlimit(0, int(div.size()-1), idx);
+            rateHz = hostBpm / 60.0 / div[idx];
         }
-        // Reinitialize waveform if shape param changed
-        if (lfoShapeParam)
+
+        // -------- 2. advance internal phase ---------------------------------
+        const double phaseInc = rateHz / currentSampleRate;   // cycles / sample
+        lfoPhase += phaseInc;
+        if (lfoPhase >= 1.0)
+            lfoPhase -= 1.0;
+
+        // -------- 3. add user phase-offset slider ---------------------------
+        float userOff = (lfoPhaseParam ? lfoPhaseParam->load() : 0.0f); // 0-1
+        double t = lfoPhase + userOff;
+        if (t >= 1.0)
+            t -= 1.0;                                           // wrap to 0-1
+
+        // -------- 4. waveform ----------------------------------------------
+        int shape = lfoShapeParam ? int(lfoShapeParam->load()) : 0;
+        float sample = 0.0f;
+        switch (shape)
         {
-            int shape = int(lfoShapeParam->load());
-            if (shape != previousLfoShape)
-            {
-                switch (shape)
-                {
-                    case 0: lfoOsc.initialise([](float x){ return std::sin(juce::MathConstants<float>::twoPi * x); }, 128); break;
-                    case 1: lfoOsc.initialise([](float x){ return x < 0.5f ? 4.0f*x - 1.0f : 3.0f - 4.0f*x; }, 128); break;
-                    case 2: lfoOsc.initialise([](float x){ return 2.0f*x - 1.0f; }, 128); break;
-                    case 3: lfoOsc.initialise([](float x){ return x < 0.5f ? 1.0f : -1.0f; }, 128); break;
-                    default: break;
-                }
-                previousLfoShape = shape;
-            }
+            case 0:  sample = std::sin(juce::MathConstants<float>::twoPi * (float)t);          break; // Sine
+            case 1:  sample = (t < 0.5) ? float(4.0*t - 1.0) : float(3.0 - 4.0*t);             break; // Triangle
+            case 2:  sample = float(2.0*t - 1.0);                                              break; // Saw
+            case 3:  sample = (t < 0.5) ? 1.0f : -1.0f;                                        break; // Square
+            default: break;
         }
-        lfoOsc.setFrequency((float)rateHz);
-        // process LFO sample (-1..1)
-        float lfoSample = lfoOsc.processSample(0.0f);
-        lfoVal = lfoSample * depth;
+
+        // -------- 5. scale by depth ----------------------------------------
+        lfoVal = sample * depth;
     }
 
     const double baseFreq = juce::MidiMessage::getMidiNoteInHertz(getCurrentlyPlayingNote());

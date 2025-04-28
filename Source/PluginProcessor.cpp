@@ -225,7 +225,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout AllSynthPluginAudioProcessor
     // -------- New : Filter Oversampling --------------------------------
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         "FILTER_OS", "Filter Oversampling",
-        juce::StringArray{ "Off", "2×", "4×" },
+        juce::StringArray{ "Off", "2× IIR", "4× IIR", "2× FIR Equiripple", "4× FIR Equiripple" },
         0));
     // ----------------------------------------------------------------
 
@@ -331,6 +331,18 @@ void AllSynthPluginAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     // --------------------------------------------------------------------------
     
     buffer.clear();
+
+    // ---------- Oversampling change detection ------------------------------
+    {
+        const int desiredOs = (int) *parameters.getRawParameterValue ("FILTER_OS");
+        if (desiredOs != lastFilterOs)
+        {
+            lastFilterOs = desiredOs;
+            for (int i = 0; i < synth.getNumVoices(); ++i)
+                if (auto* v = dynamic_cast<SynthVoice*>(synth.getVoice(i)))
+                    v->updateOversampling(); // one-time rebuild per voice
+        }
+    }
 
     // Pass host BPM to voices for LFO sync
     double hostBpm = 120.0;

@@ -24,6 +24,9 @@ public:
 
     void prepare(double sampleRate, int samplesPerBlock, int outputChannels);
 
+    /** Rebuild oversampler and filters to match current FILTER_OS param */
+    void updateOversampling() { configureOversampling(); }
+
     enum
     {
         gainIndex,

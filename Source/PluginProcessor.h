@@ -121,6 +121,9 @@ private:
     std::atomic<float>* humOnParam    = nullptr;
     std::atomic<float>* crossOnParam  = nullptr;
     std::atomic<float>* masterGainParam = nullptr;
+
+    // ===== Oversampling change tracker ======================================
+    int lastFilterOs = -1; // cache current FILTER_OS to update voices
     // =========================================================================
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AllSynthPluginAudioProcessor)

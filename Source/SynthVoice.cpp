@@ -148,6 +148,8 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, SynthesiserSound*
         drift = juce::Random::getSystemRandom().nextFloat() * 0.002f - 0.001f; // ±0.1%
 
     ignoreUnused(velocity);
+    // Only reconfigure oversampling when a new note starts
+    //configureOversampling(); // disabled to avoid stutter on note start
 }
 
 void SynthVoice::stopNote(float /*velocity*/, bool allowTailOff)
@@ -321,7 +323,6 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
     if (!isVoiceActive())
         return;
 
-    configureOversampling();  // live switch
     updateParams();
 
     const bool useSVF = (static_cast<int>(*modelParam) == 2 ||
@@ -923,15 +924,31 @@ void SynthVoice::configureOversampling()
         return;
     currentOsMode = desired;
 
+    // Determine factor and filter type based on mode
     size_t factor = 1;
-    // JUCE uses template-local enum for filter type
     auto   ftype  = juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR;
-
     switch (desired)
     {
-        case 1: factor = 2; break; // 2×
-        case 2: factor = 4; break; // 4×
-        default: factor = 1; break; // Off
+        case 1: // 2× IIR
+            factor = 2;
+            ftype  = juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR;
+            break;
+        case 2: // 4× IIR
+            factor = 4;
+            ftype  = juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR;
+            break;
+        case 3: // 2× FIR Equiripple
+            factor = 2;
+            ftype  = juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple;
+            break;
+        case 4: // 4× FIR Equiripple
+            factor = 4;
+            ftype  = juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple;
+            break;
+        default:
+            factor = 1;
+            ftype  = juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR; // default
+            break;
     }
 
     if (factor == 1)

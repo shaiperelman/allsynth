@@ -126,5 +126,18 @@ private:
     int lastFilterOs = -1; // cache current FILTER_OS to update voices
     // =========================================================================
 
+    // ---------- Delay / Reverb perf helpers ---------------------------------
+    std::atomic<float>* delayMixParam   = nullptr;
+    std::atomic<float>* delayFbParam    = nullptr;
+    std::atomic<float>* delayTimeParam  = nullptr;
+    std::atomic<float>* delaySyncParam  = nullptr;
+    std::atomic<float>* reverbMixParam  = nullptr;
+
+    float prevDelayMix      = -1.0f;
+    float prevDelayFb       = -1.0f;
+    float prevDelaySeconds  = -1.0f;
+    bool  prevDelaySyncOn   = false;
+    float prevReverbMix     = -1.0f;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AllSynthPluginAudioProcessor)
 }; 

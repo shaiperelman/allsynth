@@ -294,6 +294,13 @@ void AllSynthPluginAudioProcessor::prepareToPlay(double sampleRate, int samplesP
     crossOnParam   = parameters.getRawParameterValue("CROSS_ON");
     masterGainParam = parameters.getRawParameterValue("MASTER_GAIN");
     // -------------------------------------------------------------------------
+
+    // -------- delay / reverb cached pointers (perf) -------------------------
+    delayMixParam    = parameters.getRawParameterValue("DELAY_MIX");
+    delayFbParam     = parameters.getRawParameterValue("DELAY_FB");
+    delayTimeParam   = parameters.getRawParameterValue("DELAY_TIME");
+    delaySyncParam   = parameters.getRawParameterValue("DELAY_SYNC");
+    reverbMixParam   = parameters.getRawParameterValue("REVERB_MIX");
 }
 
 void AllSynthPluginAudioProcessor::releaseResources() {}
@@ -344,13 +351,14 @@ void AllSynthPluginAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         }
     }
 
+    // ---------- Transport info (single query) -------------------------------
+    juce::AudioPlayHead::CurrentPositionInfo pos;
+    const bool havePos = (getPlayHead() != nullptr) &&
+                         getPlayHead()->getCurrentPosition(pos);
+    const double hostBpm = (havePos && pos.bpm > 0.0) ? pos.bpm : 120.0;
+    const bool hostSyncAvailable = havePos && pos.bpm > 0.0;
+    
     // Pass host BPM to voices for LFO sync
-    double hostBpm = 120.0;
-    if (auto* ph = getPlayHead()) {
-        juce::AudioPlayHead::CurrentPositionInfo pos;
-        if (ph->getCurrentPosition(pos) && pos.bpm > 0.0)
-            hostBpm = pos.bpm;
-    }
     for (int i = 0; i < synth.getNumVoices(); ++i)
         if (auto* v = dynamic_cast<SynthVoice*>(synth.getVoice(i)))
             v->setHostBpm(hostBpm);
@@ -387,44 +395,33 @@ void AllSynthPluginAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     }
 
     // ----------------------  GLOBAL FX  --------------------------------------
-    const bool   delayOn   = *delayOnParam > 0.5f;
-    const bool   syncOn    = parameters.getRawParameterValue("DELAY_SYNC")->load() > 0.5f;
-    const float  delayMix  = parameters.getRawParameterValue("DELAY_MIX")->load();
-    const float  fb        = parameters.getRawParameterValue("DELAY_FB" )->load();
-    const float  timeMsPar = parameters.getRawParameterValue("DELAY_TIME")->load();
+    const bool  delayOn   = *delayOnParam > 0.5f;
+    const bool  syncOn    = (delaySyncParam && *delaySyncParam > 0.5f);
+
+    const float delayMix  = delayMixParam  ? delayMixParam ->load() : 0.0f;
+    const float fb        = delayFbParam   ? delayFbParam  ->load() : 0.0f;
+    const float timeMsPar = delayTimeParam ? delayTimeParam->load() : 500.0f;
 
     // ---- calc (possibly BPM‑synced) delay time ------------------------------
     double delaySeconds = timeMsPar * 0.001;
-    if (syncOn)
+    if (syncOn && hostSyncAvailable)
     {
-        bool hostSync = false;
-        if (auto* ph = getPlayHead())
-        {
-            juce::AudioPlayHead::CurrentPositionInfo pos;
-            if (ph->getCurrentPosition(pos) && pos.bpm > 0.0)
-                hostSync = true;
-            if (hostSync && delaySyncDivParam)
-            {
-                // compute quarter-note seconds and apply sync division
-                static const std::array<double,7> divFactors = { 1.0, 2.0, 4.0, 8.0, 16.0, 1.5, 3.0 };
-                int idx = int (delaySyncDivParam->load());
-                idx = juce::jlimit(0, 6, idx);
-                double qNoteSec = 60.0 / pos.bpm;
-                delaySeconds = qNoteSec / divFactors[idx];
-            }
-            // otherwise, fallback to manual timeMsPar
-        }
+        static const std::array<double,7> divFactors { 1.0,2.0,4.0,8.0,16.0,1.5,3.0 };
+        int idx = juce::jlimit (0, 6, int (delaySyncDivParam->load()));
+        delaySeconds = (60.0 / hostBpm) / divFactors[idx];
     }
 
     // process L & R separately
     if (delayOn)
     {
-        delayL.setMix((float)delayMix);
-        delayR.setMix((float)delayMix);
-        delayL.setFeedback((float)fb);
-        delayR.setFeedback((float)fb);
-        delayL.setDelayTime((float)delaySeconds);
-        delayR.setDelayTime((float)delaySeconds);
+        if (delayMix != prevDelayMix)      { delayL.setMix(delayMix); delayR.setMix(delayMix); prevDelayMix = delayMix; }
+        if (fb        != prevDelayFb)       { delayL.setFeedback(fb);  delayR.setFeedback(fb);  prevDelayFb  = fb; }
+        if (delaySeconds != prevDelaySeconds)
+        {
+            delayL.setDelayTime ((float) delaySeconds);
+            delayR.setDelayTime ((float) delaySeconds);
+            prevDelaySeconds = (float) delaySeconds;
+        }
 
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
         {
@@ -439,7 +436,7 @@ void AllSynthPluginAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
 
     // ----- Reverb ------------------------------------------------------------
     const bool  revOn  = *reverbOnParam > 0.5f;
-    const float revMix = parameters.getRawParameterValue("REVERB_MIX")->load();
+    const float revMix = reverbMixParam ? reverbMixParam->load() : 0.3f;
 
     // === NEW : choose and (re)‑configure the reverb when the user changes type
     const int  revType = static_cast<int>(*reverbTypeParam);
@@ -503,7 +500,7 @@ void AllSynthPluginAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
 
     if (revOn)
     {
-        reverb.setMix(revMix);
+        if (revMix != prevReverbMix) { reverb.setMix(revMix); prevReverbMix = revMix; }
         reverb.processBlock(buffer);
     }
     

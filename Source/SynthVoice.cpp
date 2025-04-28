@@ -61,6 +61,11 @@ void SynthVoice::prepare(double sampleRate, int samplesPerBlock, int /*outputCha
 
     adsr.setSampleRate(sampleRate);
 
+    // --- Initialize Amp Mod Smoother ---
+    ampModSmoothed.reset(sampleRate, 0.005); // 5ms smoothing time
+    ampModSmoothed.setCurrentAndTargetValue(1.0f); // Start at no modulation (gain = 1.0)
+    // -----------------------------------
+
     // Allocate scratch buffer once
     scratchBuffer.setSize(1, samplesPerBlock);
 
@@ -345,16 +350,18 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
             if (analogEnvParam && *analogEnvParam > 0.5f)
                 env = std::sqrt(env);   // RC-style analog curve
 
-            // -------- LFO → AMP (click-safe) --------------------------------
+            // -------- LFO → AMP (Smoothed & Click-safe) ---------------------
+            float targetAmpMod = 1.0f; // Default: no modulation
             if (lfoOnParam && *lfoOnParam > 0.5f &&
                 lfoToAmpParam && *lfoToAmpParam > 0.5f)
             {
                 const float depthValue = lfoDepthParam ? lfoDepthParam->load() : 0.0f;
                 const float depth = juce::jlimit(0.0f, 0.9f, depthValue); // 0-0.9
-                // map lfoRaw (-1…+1)  ⇒ gain  (1-depth … 1+depth)
-                const float ampMod = 1.0f + depth * lastLfoValue;
-                env *= ampMod;                      // no hard-zero → no click
+                targetAmpMod = 1.0f + depth * lastLfoValue; // Target gain: 0.1 to 1.9
             }
+            ampModSmoothed.setTargetValue(targetAmpMod); // Set the target for the smoother
+            env *= ampModSmoothed.getNextValue();       // Apply the SMOOTHED value
+            // ----------------------------------------------------------------
 
             float currentSample = filtered * env;
 
@@ -374,16 +381,18 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
             if (analogEnvParam && *analogEnvParam > 0.5f)
                 env = std::sqrt(env);   // RC-style analog curve
 
-            // -------- LFO → AMP (click-safe) --------------------------------
+            // -------- LFO → AMP (Smoothed & Click-safe) ---------------------
+            float targetAmpMod = 1.0f; // Default: no modulation
             if (lfoOnParam && *lfoOnParam > 0.5f &&
                 lfoToAmpParam && *lfoToAmpParam > 0.5f)
             {
                 const float depthValue = lfoDepthParam ? lfoDepthParam->load() : 0.0f;
                 const float depth = juce::jlimit(0.0f, 0.9f, depthValue); // 0-0.9
-                // map lfoRaw (-1…+1)  ⇒ gain  (1-depth … 1+depth)
-                const float ampMod = 1.0f + depth * lastLfoValue;
-                env *= ampMod;                      // no hard-zero → no click
+                targetAmpMod = 1.0f + depth * lastLfoValue; // Target gain: 0.1 to 1.9
             }
+            ampModSmoothed.setTargetValue(targetAmpMod); // Set the target for the smoother
+            env *= ampModSmoothed.getNextValue();       // Apply the SMOOTHED value
+            // ----------------------------------------------------------------
 
             float currentSample = filt * env;
 

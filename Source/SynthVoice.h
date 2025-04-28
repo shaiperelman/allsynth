@@ -149,6 +149,7 @@ private:
     std::atomic<float>* lfoToCutoffParam = nullptr;
     std::atomic<float>* lfoToAmpParam    = nullptr;
     float               lastLfoValue     = 0.0f;   // raw LFO sample (-1…+1)
+    juce::LinearSmoothedValue<float> ampModSmoothed; // Smoothing for Amp LFO
     // -----------------------------------------------------------------------
     int previousLfoShape = -1;                    // cache last applied LFO shape
 

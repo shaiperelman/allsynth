@@ -96,6 +96,11 @@ void SynthVoice::prepare(double sampleRate, int samplesPerBlock, int /*outputCha
     lfoSyncDivParam = parameters.getRawParameterValue("LFO_SYNC_DIV");
     lfoShapeParam   = parameters.getRawParameterValue("LFO_SHAPE");
     lfoPhaseParam   = parameters.getRawParameterValue("LFO_PHASE");
+    // === NEW : cache routing toggles =======================================
+    lfoToPitchParam  = parameters.getRawParameterValue("LFO_TO_PITCH");
+    lfoToCutoffParam = parameters.getRawParameterValue("LFO_TO_CUTOFF");
+    lfoToAmpParam    = parameters.getRawParameterValue("LFO_TO_AMP");
+    // -----------------------------------------------------------------------
 
     // Initialize and prepare LFO oscillator
     lfoOsc.initialise([](float x) { return std::sin(juce::MathConstants<float>::twoPi * x); }, 128);
@@ -159,7 +164,7 @@ float SynthVoice::computeOscSample()
     float lfoDpParam = *lfoDepthParam;                 // 0-1 slider
     float depth  = lfoDpParam * lfoDpParam * 0.08f;    // quadratic, max ≈ 8 %
 
-    float lfoVal = 0.0f;
+    float lfoRaw = 0.0f;                 // RAW –1 … +1   (no depth applied yet)
     if (lfoOn)
     {
         // -------- 1. work out rate in Hz (free-run or beat-synced) ----------
@@ -196,13 +201,22 @@ float SynthVoice::computeOscSample()
             default: break;
         }
 
-        // -------- 5. scale by depth ----------------------------------------
-        lfoVal = sample * depth;
+        // -------- 5. store raw value ----------------------------------------
+        lfoRaw = sample;                 // store raw value (-1…+1)
     }
 
-    const double baseFreq = juce::MidiMessage::getMidiNoteInHertz(getCurrentlyPlayingNote());
-    
-    const double freqMod = baseFreq * (1.0 + lfoVal);
+    lastLfoValue = lfoRaw;               // cache for Amp / GUI
+
+    // -------- PER-DESTINATION DEPTHS ---------------------------------
+    const float depthLin   = *lfoDepthParam;              // 0…1 knob
+    const float depthPitch = depthLin * depthLin * 0.08f; // subtle
+    const float depthCut   = depthLin * 0.50f;            // ±50 %
+    const float depthAmp   = depthLin * 1.00f;            // 0-200 %
+
+    // ---------- PITCH route ------------------------------------------
+    const bool pitchRouteOn = (lfoToPitchParam && *lfoToPitchParam > 0.5f);
+    const double freqMod = frequency * (1.0
+                         + (pitchRouteOn ? lfoRaw * depthPitch : 0.0f));
     const double phaseInc = freqMod / currentSampleRate;
     const float  dt       = static_cast<float>(phaseInc);
 
@@ -329,7 +343,17 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
             float filtered = tempBuffer.getSample(0, sample);
             float env = adsr.getNextSample();
             if (analogEnvParam && *analogEnvParam > 0.5f)
-                env = std::sqrt(env);   // RC‑style analog curve
+                env = std::sqrt(env);   // RC-style analog curve
+
+            // -------- LFO → AMP  --------------------------------------
+            if (lfoOnParam && *lfoOnParam > 0.5f &&
+                lfoToAmpParam && *lfoToAmpParam > 0.5f)
+            {
+                const float depthAmp = (*lfoDepthParam);          // 0…1
+                env *= juce::jlimit(0.0f, 2.0f,
+                                   1.0f + depthAmp * lastLfoValue);
+            }
+
             float currentSample = filtered * env;
 
             // Add to all output channels
@@ -346,7 +370,17 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
             filt = std::tanh(1.4f * filt);     // simple drive
             float env = adsr.getNextSample();
             if (analogEnvParam && *analogEnvParam > 0.5f)
-                env = std::sqrt(env);   // RC‑style analog curve
+                env = std::sqrt(env);   // RC-style analog curve
+
+            // -------- LFO → AMP  --------------------------------------
+            if (lfoOnParam && *lfoOnParam > 0.5f &&
+                lfoToAmpParam && *lfoToAmpParam > 0.5f)
+            {
+                const float depthAmp = (*lfoDepthParam);          // 0…1
+                env *= juce::jlimit(0.0f, 2.0f,
+                                   1.0f + depthAmp * lastLfoValue);
+            }
+
             float currentSample = filt * env;
 
             for (int channel = 0; channel < outputBuffer.getNumChannels(); ++channel)
@@ -809,7 +843,19 @@ void SynthVoice::updateParams()
     }
     
 updateFilterOnly:
-    // Update filter parameters
+    // -------- LFO → CUTOFF  -----------------------------------------
+    float modCutoff = cutoffSmoothed.getTargetValue();
+
+    if (lfoOnParam && *lfoOnParam > 0.5f &&
+        lfoToCutoffParam && *lfoToCutoffParam > 0.5f)
+    {
+        const float depthCut = (*lfoDepthParam) * 0.50f;          // ±50 %
+        const float lfoSample = lastLfoValue;                     // raw
+        modCutoff = juce::jlimit(20.0f, 20000.0f,
+                                 modCutoff * (1.0f + depthCut * lfoSample));
+    }
+
+    cutoffSmoothed.setTargetValue(modCutoff);
     ladder.setCutoffFrequencyHz(cutoffSmoothed.getNextValue());
     ladder.setResonance(resonanceSmoothed.getNextValue());
     

@@ -144,6 +144,12 @@ private:
     std::atomic<float>* lfoShapeParam = nullptr;   // LFO waveform shape
     std::atomic<float>* lfoSyncDivParam = nullptr; // LFO sync division selector
     std::atomic<float>* lfoPhaseParam = nullptr;   // LFO phase offset (0..1)
+    // === NEW : LFO routing toggles =========================================
+    std::atomic<float>* lfoToPitchParam  = nullptr;
+    std::atomic<float>* lfoToCutoffParam = nullptr;
+    std::atomic<float>* lfoToAmpParam    = nullptr;
+    float               lastLfoValue     = 0.0f;   // raw LFO sample (-1…+1)
+    // -----------------------------------------------------------------------
     int previousLfoShape = -1;                    // cache last applied LFO shape
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SynthVoice)

@@ -970,11 +970,14 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
                     hostSync = true;
             }
         }
-        bool showControls = syncOn && !hostSync;
-        lfoSyncDivBox.setVisible(showControls);
-        lfoPhaseSlider.setVisible(showControls);
-        lfoSyncDivLabel.setVisible(showControls);
-        lfoPhaseLabel.setVisible(showControls);
+        // Division controls only shown when sync is on but not connected to host
+        bool showDivControls = syncOn && !hostSync;
+        lfoSyncDivBox.setVisible(showDivControls);
+        lfoSyncDivLabel.setVisible(showDivControls);
+        
+        // Phase controls are always visible since they're useful in all modes
+        lfoPhaseSlider.setVisible(true);
+        lfoPhaseLabel.setVisible(true);
     };
     updateLfoVis();
     lfoSyncToggle.onClick = updateLfoVis;

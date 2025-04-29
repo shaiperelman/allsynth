@@ -902,10 +902,45 @@ updateFilterOnly:
     }
 
     cutoffSmoothed.setTargetValue(modCutoff);
-    ladder.setCutoffFrequencyHz(cutoffSmoothed.getNextValue());
+
+    // Advanced adjustment for consistent filter response across oversampling rates
+    float nextCut = cutoffSmoothed.getNextValue();
+    float currentCut = cutoffSmoothed.getCurrentValue();
+    
+    if (oversampler)
+    {
+        const float rawFactor = static_cast<float>(oversampler->getOversamplingFactor());
+        
+        // Different scaling approach depending on cutoff frequency range
+        // This better matches the non-linear behavior of the filter
+        if (nextCut < 100.0f)
+        {
+            // Special case for very low cutoff to prevent sound leakage
+            // Apply a stronger adjustment at the bottom end
+            nextCut = nextCut / rawFactor;
+            currentCut = currentCut / rawFactor;
+        }
+        else if (nextCut < 1000.0f)
+        {
+            // Mid-range frequencies get a more moderate adjustment
+            const float adjustedFactor = 0.8f * std::log10(1.0f + rawFactor);
+            nextCut *= adjustedFactor;
+            currentCut *= adjustedFactor;
+        }
+        else
+        {
+            // High frequencies need less adjustment to match original behavior
+            const float adjustedFactor = 0.6f * std::log10(1.0f + rawFactor);
+            nextCut *= adjustedFactor;
+            currentCut *= adjustedFactor;
+        }
+    }
+    
+    // Apply the adjusted cutoff values
+    ladder.setCutoffFrequencyHz(nextCut);
     ladder.setResonance(resonanceSmoothed.getNextValue());
     
-    svFilter.setCutoffFrequency(cutoffSmoothed.getCurrentValue());
+    svFilter.setCutoffFrequency(currentCut);
     svFilter.setResonance(resonanceSmoothed.getCurrentValue());
 
     // ADSR

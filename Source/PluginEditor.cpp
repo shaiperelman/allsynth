@@ -983,7 +983,7 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     filterOsLabel.setText ("OS", juce::dontSendNotification);
     addAndMakeVisible (filterOsLabel);
 
-    filterOsBox.addItemList ({ "Off", "2×", "4×" }, 1);
+    filterOsBox.addItemList ({ "Off", "2× IIR", "4× IIR", "2× FIR", "4× FIR" }, 1);
     addAndMakeVisible (filterOsBox);
 
     filterOsAttachment = std::make_unique<juce::AudioProcessorValueTreeState::

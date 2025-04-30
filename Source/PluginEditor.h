@@ -137,8 +137,8 @@ private:
                      legatoToggle{"Legato"}; // NEW: Analog Env & Legato toggles
     
     // ===== NEW sound enhancement toggles =======================================
-    juce::TextButton enhOsToggle{"Full OS"},
-                     enhVcaToggle{"VCA Clip"},
+    juce::ComboBox    enhOsBox;   // Full-voice OS selector
+    juce::TextButton   enhVcaToggle{"VCA Clip"},
                      enhDitherToggle{"Dither"};
     
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>
@@ -147,8 +147,10 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> lfoToggleAttachment, noiseToggleAttachment, driveToggleAttachment, delayToggleAttachment, consoleToggleAttachment, delaySyncAttachment, reverbToggleAttachment, lfoSyncAttachment, lfoToPitchAttachment, lfoToCutoffAttachment, lfoToAmpAttachment;
     
     // ===== Sound enhancement attachments ===============================
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> 
-        enhOsAttachment, enhVcaAttachment, enhDitherAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
+        enhOsAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>
+        enhVcaAttachment, enhDitherAttachment;
     // =========================================================================
 
     // Map of companies to synths and ID map

@@ -230,8 +230,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout AllSynthPluginAudioProcessor
     // ----------------------------------------------------------------
 
     // --- NEW: enhancement toggles ------------------------------------------
-    params.push_back(std::make_unique<juce::AudioParameterBool>(
-        "ENH_OS",      "Full-voice Oversampling", false));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "ENH_OS", "Full-voice Oversampling",
+        juce::StringArray{ "Off", "2× IIR", "4× IIR", "2× FIR Equiripple", "4× FIR Equiripple" },
+        0));  // default = Off
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         "ENH_VCA",     "VCA Soft-Clip",           false));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
@@ -356,12 +358,15 @@ void AllSynthPluginAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     // ---------- Oversampling change detection ------------------------------
     {
         // base user choice
-        int desiredOs = (int) *parameters.getRawParameterValue("FILTER_OS");
+        int desiredOs = int(*parameters.getRawParameterValue("FILTER_OS"));
         
-        // if our new ENH_OS toggle is on, force 4× IIR
-        if (enhOsParam && *enhOsParam > 0.5f)
-            desiredOs = 2;   // 2 → "4× IIR" in the FILTER_OS choices
-            
+        // if ENH_OS is non-zero, force that oversampling mode
+        if (enhOsParam)
+        {
+            int enhChoice = int(*enhOsParam); // 0…4
+            if (enhChoice > 0)
+                desiredOs = enhChoice;
+        }
         if (desiredOs != lastFilterOs)
         {
             lastFilterOs = desiredOs;

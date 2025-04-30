@@ -162,7 +162,27 @@ private:
     std::atomic<float>* osModeParam = nullptr;   // pointer to FILTER_OS parameter
     int    currentOsMode        = -1;            // cache selected mode (0=off)
     int    samplesPerBlockCached = 0;            // saved for oversampler init
-    // =========================================================================
+
+    // Cached per-block oscillator parameters
+    int   cachedWf1 = 0, cachedWf2 = 0;
+    float cachedPw = 0.0f, cachedVol1 = 0.0f, cachedVol2 = 0.0f;
+
+    // Cached per-block LFO and noise parameters
+    bool  cachedLfoOn = false;
+    float cachedLfoRate = 0.0f;
+    float cachedLfoDepthParam = 0.0f;
+    bool  cachedLfoSync = false;
+    int   cachedLfoSyncDiv = 2;
+    int   cachedLfoShape = 0;
+    float cachedLfoPhaseOffset = 0.0f;
+    bool  cachedLfoToPitch = false;
+    bool  cachedLfoToCutoff = false;
+    bool  cachedLfoToAmp = false;
+    bool  cachedNoiseOn = false;
+    float cachedNoiseMix = 0.0f;
+    double cachedDetuneRatio = 1.0; // cached 2nd-osc detune ratio
+
+    void cacheOscParams();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SynthVoice)
 }; 

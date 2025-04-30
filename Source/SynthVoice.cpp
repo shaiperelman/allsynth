@@ -162,29 +162,27 @@ void SynthVoice::stopNote(float /*velocity*/, bool allowTailOff)
 
 float SynthVoice::computeOscSample()
 {
-    // Get parameters -----------------------------------------------------------
-    int   wf1   = static_cast<int>(*wave1Param);
-    int   wf2   = static_cast<int>(*wave2Param);
-    float pw    = *pulseWidthParam;
-    float vol1  = *osc1VolParam;
-    float vol2  = *osc2VolParam;
+    // Use cached per-block oscillator parameters
+    int   wf1   = cachedWf1;
+    int   wf2   = cachedWf2;
+    float pw    = cachedPw;
+    float vol1  = cachedVol1;
+    float vol2  = cachedVol2;
 
-    // LFO
-    bool  lfoOn  = *lfoOnParam > 0.5f;
-    float lfoRt  = *lfoRateParam;
-    float lfoDpParam = *lfoDepthParam;                 // 0-1 slider
+    // LFO (cached)
+    bool  lfoOn       = cachedLfoOn;
+    float lfoRt       = cachedLfoRate;
+    float lfoDpParam  = cachedLfoDepthParam;           // 0-1 slider
     float depth  = lfoDpParam * lfoDpParam * 0.08f;    // quadratic, max ≈ 8 %
 
     float lfoRaw = 0.0f;                 // RAW –1 … +1   (no depth applied yet)
     if (lfoOn)
     {
-        // -------- 1. work out rate in Hz (free-run or beat-synced) ----------
         double rateHz = lfoRt;
-        if (lfoSyncParam && *lfoSyncParam > 0.5f && hostBpm > 0.0)
+        if (cachedLfoSync && hostBpm > 0.0)
         {
             static const std::array<double,7> div = {1,2,4,8,16,1.5,3};
-            int idx = lfoSyncDivParam ? int(lfoSyncDivParam->load()) : 2;
-            idx = juce::jlimit(0, int(div.size()-1), idx);
+            int idx = juce::jlimit(0, int(div.size()-1), cachedLfoSyncDiv);
             rateHz = hostBpm / 60.0 / div[idx];
         }
 
@@ -195,13 +193,13 @@ float SynthVoice::computeOscSample()
             lfoPhase -= 1.0;
 
         // -------- 3. add user phase-offset slider ---------------------------
-        float userOff = (lfoPhaseParam ? lfoPhaseParam->load() : 0.0f); // 0-1
+        float userOff = cachedLfoPhaseOffset; // 0-1
         double t = lfoPhase + userOff;
         if (t >= 1.0)
             t -= 1.0;                                           // wrap to 0-1
 
         // -------- 4. waveform ----------------------------------------------
-        int shape = lfoShapeParam ? int(lfoShapeParam->load()) : 0;
+        int shape = cachedLfoShape;
         float sample = 0.0f;
         switch (shape)
         {
@@ -219,13 +217,13 @@ float SynthVoice::computeOscSample()
     lastLfoValue = lfoRaw;               // cache for Amp / GUI
 
     // -------- PER-DESTINATION DEPTHS ---------------------------------
-    const float depthLin   = *lfoDepthParam;              // 0…1 knob
+    const float depthLin   = cachedLfoDepthParam;        // 0…1 knob
     const float depthPitch = depthLin * depthLin * 0.08f; // subtle
     const float depthCut   = depthLin * 0.50f;            // ±50 %
     const float depthAmp   = depthLin * 1.00f;            // 0-200 %
 
     // ---------- PITCH route ------------------------------------------
-    const bool pitchRouteOn = (lfoToPitchParam && *lfoToPitchParam > 0.5f);
+    const bool pitchRouteOn = cachedLfoToPitch;
     const double freqMod = frequency * (1.0
                          + (pitchRouteOn ? lfoRaw * depthPitch : 0.0f));
     const double phaseInc = freqMod / currentSampleRate;
@@ -234,8 +232,7 @@ float SynthVoice::computeOscSample()
     // NEW: 2nd-osc detune offsets
     float semiOffset = osc2SemiParam ? osc2SemiParam->load() : 0.0f;
     float fineOffset = osc2FineParam ? osc2FineParam->load() : 0.0f;
-    double detuneRatio = std::pow(2.0, (semiOffset + fineOffset * 0.01) / 12.0);
-    const double phaseInc2 = phaseInc * detuneRatio;
+    const double phaseInc2 = phaseInc * cachedDetuneRatio;
     const float  dt2       = static_cast<float>(phaseInc2);
 
     auto singleOsc = [&](int waveform, double& ph, float& triInt, double inc, float dtVal) -> float
@@ -311,9 +308,9 @@ float SynthVoice::computeOscSample()
 
     float out = osc1 * vol1 + osc2 * vol2;
     
-    // Add raw white noise if enabled
-    if (*noiseOnParam > 0.5f)
-        out = out * (1.0f - *noiseMixParam) + (rnd.nextFloat() * 2.0f - 1.0f) * *noiseMixParam;
+    // Add raw white noise if enabled (cached)
+    if (cachedNoiseOn)
+        out = out * (1.0f - cachedNoiseMix) + (rnd.nextFloat() * 2.0f - 1.0f) * cachedNoiseMix;
 
     return out;
 }
@@ -324,6 +321,7 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
         return;
 
     updateParams();
+    cacheOscParams(); // cache atomic params once per block
 
     const bool useSVF = (static_cast<int>(*modelParam) == 2 ||
                          static_cast<int>(*modelParam) == 3 ||
@@ -912,7 +910,6 @@ updateFilterOnly:
         const float rawFactor = static_cast<float>(oversampler->getOversamplingFactor());
         
         // Different scaling approach depending on cutoff frequency range
-        // This better matches the non-linear behavior of the filter
         if (nextCut < 100.0f)
         {
             // Special case for very low cutoff to prevent sound leakage
@@ -929,8 +926,9 @@ updateFilterOnly:
         }
         else
         {
-            // High frequencies need less adjustment to match original behavior
-            const float adjustedFactor = 0.6f * std::log10(1.0f + rawFactor);
+            // High frequencies compensation: reduce multiplier for >2× oversampling
+            float mult = rawFactor > 2.0f ? 0.2f : 0.6f;
+            const float adjustedFactor = mult * std::log10(1.0f + rawFactor);
             nextCut *= adjustedFactor;
             currentCut *= adjustedFactor;
         }
@@ -1006,4 +1004,33 @@ void SynthVoice::configureOversampling()
 
     filterChain.reset();  filterChain.prepare(specOS);
     svFilter.reset();     svFilter.prepare   (specOS);
+}
+
+void SynthVoice::cacheOscParams()
+{
+    cachedWf1   = wave1Param   ? int(wave1Param->load())   : 0;
+    cachedWf2   = wave2Param   ? int(wave2Param->load())   : 0;
+    cachedPw    = pulseWidthParam ? pulseWidthParam->load() : 0.0f;
+    cachedVol1  = osc1VolParam    ? osc1VolParam->load()    : 0.0f;
+    cachedVol2  = osc2VolParam    ? osc2VolParam->load()    : 0.0f;
+    // Cache LFO parameters
+    cachedLfoOn          = lfoOnParam      && *lfoOnParam > 0.5f;
+    cachedLfoRate        = lfoRateParam    ? lfoRateParam->load()    : 0.0f;
+    cachedLfoDepthParam  = lfoDepthParam   ? lfoDepthParam->load()   : 0.0f;
+    cachedLfoSync        = lfoSyncParam    && *lfoSyncParam > 0.5f;
+    cachedLfoSyncDiv     = lfoSyncDivParam ? int(lfoSyncDivParam->load()) : 2;
+    cachedLfoShape       = lfoShapeParam   ? int(lfoShapeParam->load())   : 0;
+    cachedLfoPhaseOffset = lfoPhaseParam   ? lfoPhaseParam->load()   : 0.0f;
+    cachedLfoToPitch     = lfoToPitchParam && *lfoToPitchParam > 0.5f;
+    cachedLfoToCutoff    = lfoToCutoffParam&& *lfoToCutoffParam > 0.5f;
+    cachedLfoToAmp       = lfoToAmpParam   && *lfoToAmpParam > 0.5f;
+    // Cache noise parameters
+    cachedNoiseOn        = noiseOnParam    && *noiseOnParam > 0.5f;
+    cachedNoiseMix       = noiseMixParam   ? noiseMixParam->load()   : 0.0f;
+    // Cache detune ratio (semi+fine offsets)
+    {
+        float semiOffset = osc2SemiParam ? osc2SemiParam->load() : 0.0f;
+        float fineOffset = osc2FineParam ? osc2FineParam->load() : 0.0f;
+        cachedDetuneRatio = std::pow(2.0, (semiOffset + fineOffset * 0.01f) / 12.0);
+    }
 } 

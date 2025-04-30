@@ -349,27 +349,45 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     // =========================================================================
 
     // ===== initialize sound enhancement toggles ==============================
-    for (auto* t : { &enhOsToggle, &enhVcaToggle, &enhDitherToggle })
+    // Full-voice OS selector (ComboBox)
+    enhOsBox.addItemList({ "Off", "2× IIR", "4× IIR", "2× FIR", "4× FIR" }, 1);
+    enhOsBox.setTooltip("Choose full-voice oversampling mode");
+    addAndMakeVisible(enhOsBox);
+
+    // give it a dark "off" default
+    enhOsBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour(40, 50, 40));
+    enhOsBox.setColour(juce::ComboBox::arrowColourId,      juce::Colours::white);
+    enhOsBox.setColour(juce::ComboBox::textColourId,       juce::Colours::white);
+
+    // whenever the selection changes, switch to a bright green if non-"Off"
+    enhOsBox.onChange = [this]
     {
-        t->setClickingTogglesState(true);   // NEW: allow this TextButton to latch on/off
+        const bool isOn = (enhOsBox.getSelectedId() > 1);  // 1=="Off", 2=="2× IIR", etc.
+        enhOsBox.setColour(juce::ComboBox::backgroundColourId,
+                           isOn ? juce::Colour(80, 200, 80)
+                                : juce::Colour(40, 50, 40));
+    };
+
+    // force an initial call so the very first selection gets styled correctly
+    enhOsBox.onChange();
+
+    // hookup to the parameter
+    enhOsAttachment = std::make_unique<APVTS::ComboBoxAttachment>(vts, "ENH_OS", enhOsBox);
+
+    // VCA Clip & Dither toggles
+    for (auto* t : { &enhVcaToggle, &enhDitherToggle })
+    {
+        t->setClickingTogglesState(true);
         addAndMakeVisible(*t);
         // Make the enhancement toggle buttons more visible with distinct styling
-        t->setColour(juce::TextButton::buttonColourId,       juce::Colour(40, 50, 40));         // Darker off color
-        t->setColour(juce::TextButton::buttonOnColourId,     juce::Colour(80, 200, 80));      // Brighter on color
-        t->setColour(juce::TextButton::textColourOffId,      juce::Colours::lightgrey);        // Lighter text when off
-        t->setColour(juce::TextButton::textColourOnId,       juce::Colours::white.withAlpha(0.95f)); // Bright text when on
+        t->setColour(juce::TextButton::buttonColourId, juce::Colour(40, 50, 40));       // Darker off color
+        t->setColour(juce::TextButton::buttonOnColourId, juce::Colour(80, 200, 80));    // Brighter on color
+        t->setColour(juce::TextButton::textColourOffId, juce::Colours::lightgrey);      // Lighter text when off
+        t->setColour(juce::TextButton::textColourOnId, juce::Colours::white.withAlpha(0.95f)); // Bright text when on
     }
-    
-    // Add tooltips explaining what each enhancement does
-    enhOsToggle.setTooltip("Enable 4x IIR oversampling for entire voice processing chain");
-    enhVcaToggle.setTooltip("Apply soft-clip analog VCA emulation to final output");
-    enhDitherToggle.setTooltip("Add very subtle dithering to smooth quantization artifacts");
-
-    // Attachments
-    enhOsAttachment     = std::make_unique<APVTS::ButtonAttachment>(vts, "ENH_OS",     enhOsToggle);
     enhVcaAttachment    = std::make_unique<APVTS::ButtonAttachment>(vts, "ENH_VCA",    enhVcaToggle);
     enhDitherAttachment = std::make_unique<APVTS::ButtonAttachment>(vts, "ENH_DITHER", enhDitherToggle);
-    // =========================================================================
+    // ==========================================================================
 
     // ===== Master Gain Control ==============================================
     masterGainSlider.setSliderStyle(juce::Slider::SliderStyle::RotaryVerticalDrag);
@@ -1020,6 +1038,7 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     filterOsAttachment = std::make_unique<juce::AudioProcessorValueTreeState::
                           ComboBoxAttachment>(processor.getValueTreeState(),
                                               "FILTER_OS", filterOsBox);
+
 }
 
 //==============================================================================
@@ -1428,11 +1447,11 @@ void AllSynthPluginAudioProcessorEditor::resized()
         positionToggleInCell(analogEnvToggle,  toggleRow.removeFromLeft(w));
         positionToggleInCell(legatoToggle,     toggleRow.removeFromLeft(w));
         
-        // Then place the 3 enhancement toggles - give them slightly more space
+        // Then place the 3 enhancement controls
         auto enhW = toggleRow.getWidth() / 3;
-        positionToggleInCell(enhOsToggle,      toggleRow.removeFromLeft(enhW));
+        enhOsBox    .setBounds(toggleRow.removeFromLeft(enhW).reduced(5,3));
         positionToggleInCell(enhVcaToggle,     toggleRow.removeFromLeft(enhW));
-        positionToggleInCell(enhDitherToggle,  toggleRow); // Last toggle takes remaining width
+        positionToggleInCell(enhDitherToggle,  toggleRow.removeFromLeft(enhW)); // Last toggle
     }
     // =========================================================================
 }

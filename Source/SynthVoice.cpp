@@ -908,30 +908,11 @@ updateFilterOnly:
     if (oversampler)
     {
         const float rawFactor = static_cast<float>(oversampler->getOversamplingFactor());
-        
-        // Different scaling approach depending on cutoff frequency range
-        if (nextCut < 100.0f)
-        {
-            // Special case for very low cutoff to prevent sound leakage
-            // Apply a stronger adjustment at the bottom end
-            nextCut = nextCut / rawFactor;
-            currentCut = currentCut / rawFactor;
-        }
-        else if (nextCut < 1000.0f)
-        {
-            // Mid-range frequencies get a more moderate adjustment
-            const float adjustedFactor = 0.8f * std::log10(1.0f + rawFactor);
-            nextCut *= adjustedFactor;
-            currentCut *= adjustedFactor;
-        }
-        else
-        {
-            // High frequencies compensation: reduce multiplier for >2× oversampling
-            float mult = rawFactor > 2.0f ? 0.2f : 0.6f;
-            const float adjustedFactor = mult * std::log10(1.0f + rawFactor);
-            nextCut *= adjustedFactor;
-            currentCut *= adjustedFactor;
-        }
+        // Further refine cutoff scaling: slightly less reduction for 2×, even less for 4×
+        float compRatio = (rawFactor <= 2.0f ? 0.4f : 0.3f);
+        float scale = rawFactor * compRatio;
+        nextCut    /= scale;
+        currentCut /= scale;
     }
     
     // Apply the adjusted cutoff values

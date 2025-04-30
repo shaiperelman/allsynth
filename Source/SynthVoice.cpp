@@ -109,6 +109,8 @@ void SynthVoice::prepare(double sampleRate, int samplesPerBlock, int /*outputCha
     lfoToPitchParam  = parameters.getRawParameterValue("LFO_TO_PITCH");
     lfoToCutoffParam = parameters.getRawParameterValue("LFO_TO_CUTOFF");
     lfoToAmpParam    = parameters.getRawParameterValue("LFO_TO_AMP");
+    // === NEW : cache enhancement parameter ====================================
+    enhVcaParam      = parameters.getRawParameterValue("ENH_VCA");
     // -----------------------------------------------------------------------
 
     // Initialize and prepare LFO oscillator
@@ -373,6 +375,10 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
             // ----------------------------------------------------------------
 
             float currentSample = filtered * env;
+            
+            // Apply VCA soft-clip if enabled
+            if (enhVcaParam && *enhVcaParam > 0.5f)
+                currentSample = std::tanh(1.05f * currentSample) * (1.0f / 1.05f);
 
             // Add to all output channels
             for (int channel = 0; channel < outputBuffer.getNumChannels(); ++channel)
@@ -426,6 +432,10 @@ void SynthVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSamp
             // ----------------------------------------------------------------
 
             float currentSample = filtered * env;
+            
+            // Apply VCA soft-clip if enabled
+            if (enhVcaParam && *enhVcaParam > 0.5f)
+                currentSample = std::tanh(1.05f * currentSample) * (1.0f / 1.05f);
 
             for (int channel = 0; channel < outputBuffer.getNumChannels(); ++channel)
                 outputBuffer.addSample(channel, startSample + sample, currentSample);

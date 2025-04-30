@@ -330,6 +330,11 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
                      &analogEnvToggle, &legatoToggle })
     {
         addAndMakeVisible(*t);
+        // Make analog toggle buttons more visible
+        t->setColour(juce::TextButton::buttonColourId, juce::Colour(50, 50, 60));
+        t->setColour(juce::TextButton::buttonOnColourId, juce::Colour(90, 90, 120));
+        t->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+        t->setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     }
 
     // Attachments
@@ -341,6 +346,29 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     crossAtt     = std::make_unique<APVTS::ButtonAttachment>(vts, "CROSS_ON",     crossToggle);
     analogEnvAtt = std::make_unique<APVTS::ButtonAttachment>(vts, "ANA_ENV",      analogEnvToggle);
     legatoAtt    = std::make_unique<APVTS::ButtonAttachment>(vts, "ANA_LEGATO",   legatoToggle);
+    // =========================================================================
+
+    // ===== initialize sound enhancement toggles ==============================
+    for (auto* t : { &enhOsToggle, &enhVcaToggle, &enhDitherToggle })
+    {
+        t->setClickingTogglesState(true);   // NEW: allow this TextButton to latch on/off
+        addAndMakeVisible(*t);
+        // Make the enhancement toggle buttons more visible with distinct styling
+        t->setColour(juce::TextButton::buttonColourId,       juce::Colour(40, 50, 40));         // Darker off color
+        t->setColour(juce::TextButton::buttonOnColourId,     juce::Colour(80, 200, 80));      // Brighter on color
+        t->setColour(juce::TextButton::textColourOffId,      juce::Colours::lightgrey);        // Lighter text when off
+        t->setColour(juce::TextButton::textColourOnId,       juce::Colours::white.withAlpha(0.95f)); // Bright text when on
+    }
+    
+    // Add tooltips explaining what each enhancement does
+    enhOsToggle.setTooltip("Enable 4x IIR oversampling for entire voice processing chain");
+    enhVcaToggle.setTooltip("Apply soft-clip analog VCA emulation to final output");
+    enhDitherToggle.setTooltip("Add very subtle dithering to smooth quantization artifacts");
+
+    // Attachments
+    enhOsAttachment     = std::make_unique<APVTS::ButtonAttachment>(vts, "ENH_OS",     enhOsToggle);
+    enhVcaAttachment    = std::make_unique<APVTS::ButtonAttachment>(vts, "ENH_VCA",    enhVcaToggle);
+    enhDitherAttachment = std::make_unique<APVTS::ButtonAttachment>(vts, "ENH_DITHER", enhDitherToggle);
     // =========================================================================
 
     // ===== Master Gain Control ==============================================
@@ -882,7 +910,7 @@ AllSynthPluginAudioProcessorEditor::AllSynthPluginAudioProcessorEditor(AllSynthP
     // -------------------------
     
     // Set the window size
-    setSize(1200, 850); // Increased height to accommodate all controls
+    setSize(1240, 850); // Increased width to accommodate all toggle buttons
 
     // Populate preset dropdown without loading a preset
     updatePresetDropDown(false);
@@ -1086,8 +1114,36 @@ void AllSynthPluginAudioProcessorEditor::updatePresetDropDown(bool shouldLoadPre
 
 void AllSynthPluginAudioProcessorEditor::paint(juce::Graphics& g)
 {
+    // Check if the background image needs to be recreated (e.g., after resize)
+    if (backgroundImage.isNull() || 
+        backgroundImage.getWidth() != getWidth() || 
+        backgroundImage.getHeight() != getHeight())
+    {
+        backgroundImage = juce::Image(juce::Image::ARGB, getWidth(), getHeight(), true);
+        juce::Graphics ig{ backgroundImage };
+        drawVintageBackground(ig);
+    }
+    
     g.drawImageAt(backgroundImage, 0, 0);
-    // then let JUCE draw your controls on top
+    
+    // Draw a thin border around the bottom section where the toggles are
+    auto toggleArea = getLocalBounds().removeFromBottom(45).reduced(25, 3);
+    g.setColour(juce::Colours::darkgrey);
+    g.drawRect(toggleArea, 1);
+    
+    // Add labels to identify toggle sections
+    g.setColour(juce::Colours::white);
+    g.setFont(14.0f);
+    g.drawText("Analog Extras", toggleArea.getX(), toggleArea.getY() - 15, 
+               toggleArea.getWidth() * 8 / 11, 15, juce::Justification::centredLeft);
+    
+    // Draw a more prominent green section label for enhancements
+    g.setColour(juce::Colour(120, 220, 120));
+    g.setFont(15.0f);
+    g.drawText("Sound Enhancements (ON = Bright Green)", 
+               toggleArea.getX() + toggleArea.getWidth() * 8 / 11, 
+               toggleArea.getY() - 15, toggleArea.getWidth() * 3 / 11, 15,
+               juce::Justification::centredLeft);
 }
 
 void AllSynthPluginAudioProcessorEditor::resized()
@@ -1351,23 +1407,32 @@ void AllSynthPluginAudioProcessorEditor::resized()
 
     consoleModelLabel.setTopLeftPosition(consoleModelBox.getX(), consoleModelBox.getY() - 25);
     
-    // ===== bottom row for analogue-extra toggles =============================
+    // ===== single bottom row for all toggles (analog-extras + enhancements) ==========
     {
-        auto analogueRow = getLocalBounds().removeFromBottom(40).reduced(30, 5);
-        const int w = analogueRow.getWidth() / 8;    // 8 toggles now
-
+        // Use a taller row for toggles and reduce padding for better visibility
+        auto toggleRow = getLocalBounds().removeFromBottom(45).reduced(25, 3);
+        const int w = toggleRow.getWidth() / 11;  // 11 toggles total (8 analog + 3 enh)
+        
         auto positionToggleInCell = [](juce::TextButton& toggle, juce::Rectangle<int> cell) {
-            toggle.setCentrePosition(cell.getCentreX(), cell.getCentreY());
+            // Make toggle button fill more of its cell
+            toggle.setBounds(cell.reduced(5, 3));
         };
-
-        positionToggleInCell(freePhaseToggle, analogueRow.removeFromLeft(w));
-        positionToggleInCell(driftToggle, analogueRow.removeFromLeft(w));
-        positionToggleInCell(filterTolToggle, analogueRow.removeFromLeft(w));
-        positionToggleInCell(vcaClipToggle, analogueRow.removeFromLeft(w));
-        positionToggleInCell(humToggle, analogueRow.removeFromLeft(w));
-        positionToggleInCell(crossToggle, analogueRow.removeFromLeft(w));
-        positionToggleInCell(analogEnvToggle, analogueRow.removeFromLeft(w));
-        positionToggleInCell(legatoToggle, analogueRow);   // Last toggle takes remaining width
+        
+        // First place the 8 analog-extras toggles
+        positionToggleInCell(freePhaseToggle,  toggleRow.removeFromLeft(w));
+        positionToggleInCell(driftToggle,      toggleRow.removeFromLeft(w));
+        positionToggleInCell(filterTolToggle,  toggleRow.removeFromLeft(w));
+        positionToggleInCell(vcaClipToggle,    toggleRow.removeFromLeft(w));
+        positionToggleInCell(humToggle,        toggleRow.removeFromLeft(w));
+        positionToggleInCell(crossToggle,      toggleRow.removeFromLeft(w));
+        positionToggleInCell(analogEnvToggle,  toggleRow.removeFromLeft(w));
+        positionToggleInCell(legatoToggle,     toggleRow.removeFromLeft(w));
+        
+        // Then place the 3 enhancement toggles - give them slightly more space
+        auto enhW = toggleRow.getWidth() / 3;
+        positionToggleInCell(enhOsToggle,      toggleRow.removeFromLeft(enhW));
+        positionToggleInCell(enhVcaToggle,     toggleRow.removeFromLeft(enhW));
+        positionToggleInCell(enhDitherToggle,  toggleRow); // Last toggle takes remaining width
     }
     // =========================================================================
 }

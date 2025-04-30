@@ -139,5 +139,11 @@ private:
     bool  prevDelaySyncOn   = false;
     float prevReverbMix     = -1.0f;
 
+    // ===== NEW: sound enhancement toggles =======================================
+    std::atomic<float>* enhOsParam      = nullptr;  // full-voice oversampling
+    std::atomic<float>* enhVcaParam     = nullptr;  // VCA soft-clip
+    std::atomic<float>* enhDitherParam  = nullptr;  // final dither
+    // =========================================================================
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AllSynthPluginAudioProcessor)
 }; 

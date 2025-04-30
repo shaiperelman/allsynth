@@ -129,6 +129,8 @@ private:
     std::atomic<float>* vcaClipParam    = nullptr;
     std::atomic<float>* analogEnvParam  = nullptr;   // NEW: sqrt envelope
     std::atomic<float>* legatoParam     = nullptr;   // NEW: single-trigger ADSR
+    // === NEW enhancement parameter pointers ===================================
+    std::atomic<float>* enhVcaParam     = nullptr;   // VCA soft-clip
     // === NEW detune pointers ========================================
     std::atomic<float>* osc2SemiParam  = nullptr;
     std::atomic<float>* osc2FineParam  = nullptr;

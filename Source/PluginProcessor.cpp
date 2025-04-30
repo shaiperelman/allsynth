@@ -229,6 +229,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout AllSynthPluginAudioProcessor
         0));
     // ----------------------------------------------------------------
 
+    // --- NEW: enhancement toggles ------------------------------------------
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        "ENH_OS",      "Full-voice Oversampling", false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        "ENH_VCA",     "VCA Soft-Clip",           false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        "ENH_DITHER",  "Dither On",               false));
+    // ------------------------------------------------------------------------
+
     return { params.begin(), params.end() };
 }
 
@@ -301,6 +310,11 @@ void AllSynthPluginAudioProcessor::prepareToPlay(double sampleRate, int samplesP
     delayTimeParam   = parameters.getRawParameterValue("DELAY_TIME");
     delaySyncParam   = parameters.getRawParameterValue("DELAY_SYNC");
     reverbMixParam   = parameters.getRawParameterValue("REVERB_MIX");
+    
+    // --- cache enhancement toggle pointers -----------------------------------
+    enhOsParam     = parameters.getRawParameterValue("ENH_OS");
+    enhVcaParam    = parameters.getRawParameterValue("ENH_VCA");
+    enhDitherParam = parameters.getRawParameterValue("ENH_DITHER");
 }
 
 void AllSynthPluginAudioProcessor::releaseResources() {}
@@ -341,7 +355,13 @@ void AllSynthPluginAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
 
     // ---------- Oversampling change detection ------------------------------
     {
-        const int desiredOs = (int) *parameters.getRawParameterValue ("FILTER_OS");
+        // base user choice
+        int desiredOs = (int) *parameters.getRawParameterValue("FILTER_OS");
+        
+        // if our new ENH_OS toggle is on, force 4× IIR
+        if (enhOsParam && *enhOsParam > 0.5f)
+            desiredOs = 2;   // 2 → "4× IIR" in the FILTER_OS choices
+            
         if (desiredOs != lastFilterOs)
         {
             lastFilterOs = desiredOs;
@@ -898,6 +918,25 @@ void AllSynthPluginAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         fatChain.process(ctx);
     }
     // ---------------------------------------------------------------------------
+
+    // Apply dithering if ENH_DITHER is enabled
+    if (enhDitherParam && *enhDitherParam > 0.5f)
+    {
+        auto& rnd = juce::Random::getSystemRandom();
+        const int numCh = buffer.getNumChannels();
+        const int numS  = buffer.getNumSamples();
+
+        for (int ch = 0; ch < numCh; ++ch)
+        {
+            float* data = buffer.getWritePointer(ch);
+            for (int i = 0; i < numS; ++i)
+            {
+                // very light TPDF dither
+                float d = (rnd.nextFloat() - rnd.nextFloat()) * 1e-5f;
+                data[i] += d;
+            }
+        }
+    }
 
     // Apply master gain at the end of the signal chain
     if (masterGainParam)

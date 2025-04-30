@@ -135,11 +135,20 @@ private:
                      crossToggle{"Bleed"},
                      analogEnvToggle{"A‑Env"}, 
                      legatoToggle{"Legato"}; // NEW: Analog Env & Legato toggles
-                     
+    
+    // ===== NEW sound enhancement toggles =======================================
+    juce::TextButton enhOsToggle{"Full OS"},
+                     enhVcaToggle{"VCA Clip"},
+                     enhDitherToggle{"Dither"};
+    
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>
         freePhaseAtt, driftAtt, filterTolAtt, vcaClipAtt, humAtt, crossAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> analogEnvAtt, legatoAtt; // NEW attachments
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> lfoToggleAttachment, noiseToggleAttachment, driveToggleAttachment, delayToggleAttachment, consoleToggleAttachment, delaySyncAttachment, reverbToggleAttachment, lfoSyncAttachment, lfoToPitchAttachment, lfoToCutoffAttachment, lfoToAmpAttachment;
+    
+    // ===== Sound enhancement attachments ===============================
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> 
+        enhOsAttachment, enhVcaAttachment, enhDitherAttachment;
     // =========================================================================
 
     // Map of companies to synths and ID map
